@@ -196,7 +196,7 @@ refuses to start while another runner holds it.
    ```
    The script prints the download link. To make a second release on the same day, put `TAG=<name>` before the
    command. The release goes to the repository of `git remote get-url origin`. If that is not
-   `FullBackward/Isabelle-Pool-Server`, put `REPO=FullBackward/Isabelle-Pool-Server` before the command.
+   `Deep-LCF/Isabelle-Pool-Server`, put `REPO=Deep-LCF/Isabelle-Pool-Server` before the command.
 2. If you do not have a token, pack the results by hand:
    ```bash
    tar czf ~/training-metrics-results.tgz results/

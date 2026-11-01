@@ -69,7 +69,7 @@ between two Isabelle versions.
 ### A. Docker
 
 ```bash
-git clone https://github.com/FullBackward/Isabelle-Pool-Server.git
+git clone https://github.com/Deep-LCF/Isabelle-Pool-Server.git
 cd Isabelle-Pool-Server
 ./deploy/setup.sh --verify                      # add --install-docker on a bare Ubuntu/Debian box
 ```
@@ -96,7 +96,7 @@ container runs that version. Then:
 ### B. Native Linux server
 
 ```bash
-git clone https://github.com/FullBackward/Isabelle-Pool-Server.git ~/Isabelle-Pool-Server
+git clone https://github.com/Deep-LCF/Isabelle-Pool-Server.git ~/Isabelle-Pool-Server
 cd ~/Isabelle-Pool-Server
 ./deploy/native_setup.sh --system --systemd --verify
 ```
