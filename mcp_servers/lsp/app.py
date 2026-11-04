@@ -23,7 +23,7 @@ import httpx
 from ..common import dump_json as _j
 from ..common import translate_http_error
 from .config import Config
-from .pool import attempt_prefix, header_imports
+from .pool import attempt_prefix, field_for, header_fields, header_text
 
 from . import fill_tools  # noqa: F401  (registers the fill_sorries tools on `mcp`)
 from . import memory_tools  # noqa: F401  (registers the memory tools on `mcp`)
@@ -318,8 +318,9 @@ async def isabelle_multi_attempt(
     text = binding.cached_text or ""
     prefix = attempt_prefix(text, line)
     c = await pool.client()
-    imports = await header_imports(c, text)
-    key = pool.scratch_key(binding.task_group, binding.heap_session, imports, None)
+    imports, suggested = await header_fields(c, text)
+    key = pool.scratch_key(
+        binding.task_group, binding.heap_session, imports, field_for(suggested))
     budget = timeout or Config.ATTEMPT_TIMEOUT
     cap = max(1, min(Config.MAX_PARALLEL, len(candidates)))
     sem = asyncio.Semaphore(cap)
@@ -384,8 +385,14 @@ async def isabelle_run_code(
     `imports` (default ["Main"]). heap_session runs it in that heap's import
     context. Returns {success, output, error, failed commands}."""
     c = await pool.client()
-    key = pool.scratch_key(
-        task_group, heap_session, imports or await header_imports(c, chunk) or ["Main"], None)
+    if imports:
+        # An explicit list goes through the same server parse as a header, so
+        # the session image is chosen by one definition (suggested_field).
+        _, suggested = await header_fields(c, header_text(imports))
+    else:
+        imports, suggested = await header_fields(c, chunk)
+        imports = imports or ["Main"]
+    key = pool.scratch_key(task_group, heap_session, imports, field_for(suggested))
     budget = timeout or Config.ATTEMPT_TIMEOUT
     try:
         # The bracket ALWAYS returns the scratch slot (also on cancellation).

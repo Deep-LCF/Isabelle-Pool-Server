@@ -570,8 +570,12 @@ class ParseTheoryHeaderResponse(BaseModel):
     theory_name: Optional[str]
     imports: List[str]
     suggested_field: Optional[str] = Field(
-        description="Session field implied by the first dotted import, if any "
-        "(e.g. HOL-Analysis.Derivative -> HOL-Analysis)."
+        description="Session image the dotted imports imply: the largest "
+        "distribution image named (HOL-Probability > HOL-Analysis > "
+        "HOL-Number_Theory > HOL-Algebra > HOL-Computational_Algebra > "
+        "HOL-Combinatorics > HOL-Library), else the first dotted import's "
+        "session (HOL-Cardinals.Cardinals -> HOL-Cardinals); path imports never "
+        "count. A session started on it builds the image if the server lacks it."
     )
 
 

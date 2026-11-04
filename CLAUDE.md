@@ -248,7 +248,9 @@ ISABELLE_FILL_SAMPLE_S=2           # ATP memory attribution sample interval (s) 
 # LSP MCP wrapper (mcp_servers/lsp/config.py): ISABELLE_MCP_LSP_FILL_TIMEOUT_S=30,
 # ISABELLE_MCP_LSP_FILL_MAX_TOTAL_S=600, ISABELLE_MCP_LSP_FILL_PATIENCE_S=240 (isabelle_fill_sorries
 # returns the partial state with continuing: true after this; keep it <= the MCP client's tool
-# timeout - 60), ISABELLE_MCP_LSP_FILL_POLL_S=3
+# timeout - 60), ISABELLE_MCP_LSP_FILL_POLL_S=3; ISABELLE_MCP_LSP_FIELD_FROM_IMPORTS=false (bindings and
+# scratch sessions start on the image the server's parse suggests for the dotted imports, suggested_field;
+# an image the server lacks is built on first use)
 
 # Per-session parallel proof checking (server/repl/src/main/scala/repl/session_manager.scala, read by Scala via sys.env)
 ISABELLE_PARALLEL_PROOFS=2         # Isabelle parallel_proofs per session (default 2): 0=sequential,

@@ -10,6 +10,16 @@ class Config:
     # Where the running Isabelle Pool Server lives.
     GYM_URL: str = env_str(_P, "GYM_URL", "http://localhost:8000")
     DEFAULT_FIELD: str = env_str(_P, "FIELD", "HOL")
+    # File bindings and scratch sessions start on the session image the
+    # server's header parse suggests for the file's dotted imports
+    # (`suggested_field` of POST /parse_theory_header: the largest distribution
+    # image named) instead of DEFAULT_FIELD. A file importing
+    # "HOL-Computational_Algebra.Computational_Algebra" then starts on that
+    # image (seconds) rather than loading its theories from source into the
+    # HOL image (minutes; isabelle_open used to time out). An image the server
+    # does not have is built on first use, inside the acquire: prebuild the
+    # big ones (`deploy/setup.sh --build-heaps`). Opt-in.
+    FIELD_FROM_IMPORTS: bool = env_bool(_P, "FIELD_FROM_IMPORTS", False)
     DEFAULT_TASK_GROUP: str = env_str(_P, "TASK_GROUP", "default")
 
     # httpx timeout for the underlying client (must exceed load/build budgets).

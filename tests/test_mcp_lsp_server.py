@@ -108,9 +108,9 @@ class FakeClient:
     async def parse_theory_header(self, text):
         # Emulates POST /api/v1/parse_theory_header with the server's own
         # parser (tests may import server code; the MCP itself may not).
-        from server.app.services.theory_parsing import parse_theory_header
+        from server.app.services.theory_parsing import parse_theory_header, suggested_field
         name, imports = parse_theory_header(text)
-        return {"theory_name": name, "imports": imports, "suggested_field": None}
+        return {"theory_name": name, "imports": imports, "suggested_field": suggested_field(imports)}
 
     async def load_document(self, session_id, text, thy_name=None, imports=None,
                             timeout=None, report=False, lease_id=None):
@@ -608,3 +608,78 @@ def test_run_code_reports_memory_pressure():
     assert (
         out["success"] is False and out["error"] == "memory_pressure" and out["advice"]
     )
+
+
+# ------------------------------------------------------- the session image
+
+
+def test_binding_starts_on_the_lsp_default_field(tmp_path, monkeypatch):
+    """Knob off (the default): the field sent is ISABELLE_MCP_LSP_FIELD, what the
+    client sent on its own before the knob existed (the README's row was never
+    applied to bindings until now)."""
+    from mcp_servers.lsp.config import Config
+
+    f = tmp_path / "Lib.thy"
+    f.write_text('theory Lib imports "HOL-Library.Multiset" begin\nend\n')
+    pool = _pool_with_fake()
+    asyncio.run(pool.get_binding(str(f)))
+    assert pool._client.acquired[0]["field"] == "HOL"
+    monkeypatch.setattr(Config, "DEFAULT_FIELD", "HOL-Library")
+    pool2 = _pool_with_fake()
+    asyncio.run(pool2.get_binding(str(f)))
+    assert pool2._client.acquired[0]["field"] == "HOL-Library"
+
+
+def test_binding_starts_on_the_image_the_server_suggests(tmp_path, monkeypatch):
+    """Knob on: the field is the parse response's suggested_field (the server's
+    one definition: the largest distribution image named); a header without a
+    dotted import keeps the default."""
+    from mcp_servers.lsp.config import Config
+
+    monkeypatch.setattr(Config, "FIELD_FROM_IMPORTS", True)
+    f = tmp_path / "Mixed.thy"
+    f.write_text(
+        'theory Mixed imports "HOL-Library.Multiset" "HOL-Analysis.Derivative" begin\nend\n'
+    )
+    g = tmp_path / "Plain.thy"
+    g.write_text("theory Plain imports Main begin\nend\n")
+    pool = _pool_with_fake()
+    asyncio.run(pool.get_binding(str(f)))
+    asyncio.run(pool.get_binding(str(g)))
+    assert [a["field"] for a in pool._client.acquired] == ["HOL-Analysis", "HOL"]
+
+
+def test_scratch_sessions_start_on_the_same_image(tmp_path, monkeypatch):
+    """multi_attempt's scratch sessions for a file, and run_code's for an
+    explicit import list, choose the image as a binding does, so a file bound
+    on HOL-Computational_Algebra never fans out onto HOL sessions that load it
+    from source (review finding 1)."""
+    from mcp_servers.lsp import server as lsp_server
+    from mcp_servers.lsp.config import Config
+
+    monkeypatch.setattr(Config, "FIELD_FROM_IMPORTS", True)
+    lsp_app, fake = _lsp_app_with_fake()
+    pool = lsp_server.pool
+    pool._bindings.clear()
+    pool._scratch.clear()
+    pool._scratch_counts.clear()
+    f = tmp_path / "Primes.thy"
+    f.write_text(
+        'theory Primes imports "HOL-Computational_Algebra.Primes" begin\n'
+        "lemma a: True by simp\nend\n"
+    )
+    asyncio.run(
+        lsp_app.isabelle_multi_attempt(
+            file_path=str(f), line=2, candidates=["lemma b: True by simp"]
+        )
+    )
+    asyncio.run(
+        lsp_app.isabelle_run_code(
+            chunk="lemma c: True by simp", imports=["HOL-Analysis.Derivative"]
+        )
+    )
+    asyncio.run(lsp_app.isabelle_run_code(chunk="lemma d: True by simp"))
+    assert fake.acquired[0]["field"] == "HOL-Computational_Algebra"
+    scratch = [c["field"] for c in fake.created if (c["label"] or "").startswith("scratch")]
+    assert scratch == ["HOL-Computational_Algebra", "HOL-Analysis", "HOL"]
+

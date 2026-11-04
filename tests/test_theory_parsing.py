@@ -85,6 +85,21 @@ def test_suggested_field():
     assert suggested_field(["Complex_Main", "HOL-Analysis.Derivative"]) == "HOL-Analysis"
     assert suggested_field(["Main"]) is None
     assert suggested_field([]) is None
+    # the largest distribution image named wins, whatever the header's order
+    assert suggested_field(["HOL-Library.Multiset", "HOL-Analysis.Derivative"]) == "HOL-Analysis"
+    assert suggested_field(["HOL-Algebra.Group", "HOL-Probability.Probability"]) == "HOL-Probability"
+    assert (
+        suggested_field(["HOL-Number_Theory.Residues", "HOL-Computational_Algebra.Primes"])
+        == "HOL-Number_Theory"
+    )
+    # a listed image beats one outside the list; otherwise the first dotted import
+    assert suggested_field(["HOL-Cardinals.Cardinals", "HOL-Library.Multiset"]) == "HOL-Library"
+    assert suggested_field(["HOL-ex.Cartouche_Examples", "HOL-Cardinals.Cardinals"]) == "HOL-ex"
+    assert suggested_field(["HOL.Main"]) == "HOL"
+    # a path import is not a session name
+    assert suggested_field(["../Common/Base"]) is None
+    assert suggested_field(["Lib.v2/Foo", "../v1.2/Base"]) is None
+    assert suggested_field(["../Common/Base", "HOL-Library.Multiset"]) == "HOL-Library"
 
 
 # ------------------------------------------------------------- the consumers

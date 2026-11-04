@@ -95,10 +95,41 @@ def parse_theory_header(text: str) -> Tuple[Optional[str], List[str]]:
     return name, imports
 
 
+#: Distribution images in order of preference when a header names several. A
+#: session's heap holds its parent image whole plus the theories it imports from
+#: the sessions it declares (Isabelle2026 ROOT: HOL-Probability is built on
+#: HOL-Analysis; HOL-Number_Theory and HOL-Algebra on HOL-Computational_Algebra;
+#: HOL-Analysis, HOL-Computational_Algebra and HOL-Combinatorics on HOL, importing
+#: from HOL-Library). The first one named is the image to start on; the other
+#: sessions' theories load from source on top of it.
+_FIELD_ORDER = (
+    "HOL-Probability",
+    "HOL-Analysis",
+    "HOL-Number_Theory",
+    "HOL-Algebra",
+    "HOL-Computational_Algebra",
+    "HOL-Combinatorics",
+    "HOL-Library",
+)
+#: `Session.Theory`: a session name, a dot, a theory name; never a path
+#: (`../Common/Base`, `Lib.v2/Foo`).
+_QUALIFIED_IMPORT_RE = re.compile(r"^([A-Za-z0-9_-]+)\.[^/]+$")
+
+
 def suggested_field(imports: List[str]) -> Optional[str]:
-    """The session field a dotted import implies: `HOL-Analysis.Derivative` →
-    `HOL-Analysis`. None for plain (undotted) imports like Main."""
+    """The session image a header's dotted imports imply: the largest of the
+    distribution images named (`_FIELD_ORDER`), else the first dotted import's
+    session (`HOL-Cardinals.Cardinals` → `HOL-Cardinals`). None for plain
+    imports (Main, Complex_Main). A path import is not a session name and
+    never counts. A session started on the result builds the image when the
+    server does not have it (server_utils.scala, Session_Build), inside the
+    create budget: prebuild the big ones."""
+    sessions: List[str] = []
     for name in imports:
-        if "." in name:
-            return name.split(".", 1)[0]
-    return None
+        m = _QUALIFIED_IMPORT_RE.match(name)
+        if m and m.group(1) not in sessions:
+            sessions.append(m.group(1))
+    for s in _FIELD_ORDER:
+        if s in sessions:
+            return s
+    return sessions[0] if sessions else None

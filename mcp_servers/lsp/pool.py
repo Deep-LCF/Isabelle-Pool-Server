@@ -45,16 +45,42 @@ def canonical_path(file_path: str) -> str:
     return os.path.realpath(os.path.expanduser(file_path))
 
 
-async def header_imports(client: PoolAsyncClient, text: str) -> List[str]:
-    """Import names from a full .thy source's header (quotes stripped).
+async def header_fields(
+    client: PoolAsyncClient, text: str,
+) -> Tuple[List[str], Optional[str]]:
+    """(imports, suggested_field) of a full .thy source's header.
 
     Asks the server's canonical parser (`POST /api/v1/parse_theory_header`,
     comments stripped first so a leading `(* TASK: ... *)` comment can never
     pollute the imports — isabelle-pool-server-header-imports-issue.md). Going through
     the endpoint keeps the MCP free of server code and guarantees it parses
-    headers exactly as the server it talks to does."""
+    headers, and picks the session image for them, exactly as the server it
+    talks to does (`suggested_field`: the largest distribution image named)."""
     resp = await client.parse_theory_header(text)
-    return list(resp.get("imports") or [])
+    return list(resp.get("imports") or []), resp.get("suggested_field") or None
+
+
+async def header_imports(client: PoolAsyncClient, text: str) -> List[str]:
+    """Import names from a full .thy source's header (quotes stripped)."""
+    imports, _ = await header_fields(client, text)
+    return imports
+
+
+def header_text(imports: List[str]) -> str:
+    """A one-line header naming `imports`, for the server's parser when a tool
+    gets an import list instead of a source (isabelle_run_code)."""
+    return "theory Scratch imports " + " ".join(f'"{i}"' for i in imports) + " begin"
+
+
+def field_for(suggested: Optional[str]) -> str:
+    """The field a binding or scratch session starts on: the server's
+    suggestion when Config.FIELD_FROM_IMPORTS is on and the header named a
+    session image, else Config.DEFAULT_FIELD (ISABELLE_MCP_LSP_FIELD, "HOL":
+    what the client sent on its own before the knob existed). An image the
+    server lacks is built on first use, inside the acquire."""
+    if Config.FIELD_FROM_IMPORTS and suggested:
+        return suggested
+    return Config.DEFAULT_FIELD
 
 
 def attempt_prefix(text: str, line: int) -> str:
@@ -114,13 +140,15 @@ class LspPool(GymClientMixin):
         # name" after a ~130 s doomed parent-resolution attempt).
         # An unreadable (but existing) file falls back to the empty-deps key.
         imports: Optional[List[str]] = None
+        suggested: Optional[str] = None
         try:
             with open(canon, encoding="utf-8") as f:
                 text = f.read()
         except OSError:
             text = None
         if text is not None:
-            imports = await header_imports(c, text) or None
+            imports, suggested = await header_fields(c, text)
+            imports = imports or None
         # Acquire (not create): sessions released by other bindings with the
         # same dependency key (task_group + heap / imports, default field)
         # are reused WARM instead of building a fresh session per file — but
@@ -133,8 +161,10 @@ class LspPool(GymClientMixin):
         # no cheaper than a fresh session (docs/ISSUES.md Bug 21, audit MCP-4).
         # The label is re-applied on every acquire server-side, so a reused
         # session shows THIS file in the admin console, not its previous holder.
+        # The field: the server's suggestion for the dotted imports when
+        # Config.FIELD_FROM_IMPORTS is on, else the LSP's default (field_for).
         resp = await c.acquire_session(
-            theories=imports, reuse_dirty=False,
+            theories=imports, field=field_for(suggested), reuse_dirty=False,
             task_group=group, heap_session=heap_session, label=label or canon,
         )
         binding = FileBinding(
