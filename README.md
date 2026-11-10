@@ -143,9 +143,17 @@ curl http://localhost:8000/            # version, gateway_alive, active/busy ses
 - Sledgehammer: `POST …/sledgehammer` and `…/sledgehammer_at` report `success` / `found` only when a
   proof was found (a `Try this:` line) and expose `outcome` (`proved` | `none` | `timeout` | `error`) and
   `method` (the first suggestion, timing cut); "No proof found" used to count as success. `POST …/fill_sorries`
-  starts the server-side sledgehammer job on every `sorry` of a submitted proof (poll `GET`, cancel
-  `DELETE`): sequential per session, tier-aware slots (2 at ok, 1 at warning, parked at critical), a
-  deterministic ETA, and the patched proof text in the result. The LSP MCP wraps it as
+  starts the server-side job on every `sorry` of a submitted proof (poll `GET`, cancel `DELETE`).
+  Since 2026-11-10 the job is staged per sorry: try0 (`try0_s`, 5 s per method) before the hammer;
+  nitpick (`nitpick_s`, 10 s) on what try0 cannot close, so a false statement comes back as outcome
+  `false` with its counterexample; sledgehammer (`timeout_s`); a structured retry (`isar`) when a
+  prover found a proof the one-liner could not reconstruct; and a split (`split`) of a failed
+  conjunction / universal / implication / iff / bounded-universal goal into `intro` leaves attacked in a
+  second pass. `parallel` sibling sessions share the sorries (bounded by the tier-aware slots: 2 at ok,
+  1 at warning, parked at critical). Each row says which `stage` settled it and carries `goal`,
+  `shape`, `split {k, proved}`, `nitpick`; the status carries `stages`; a deterministic ETA and the
+  patched proof text are in the result. Backend timeouts answer 504 with the budget named
+  (`BackendTimeout`), and the sledgehammer grace is half the ATP budget, 30 s at least. The LSP MCP wraps it as
   `isabelle_fill_sorries` / `isabelle_fill_status` / `isabelle_fill_cancel` (mcp_servers/lsp/README.md), and
   `GET /api/v1/memory` rows attribute the solvers a step spawns to its session (`sledgehammer_mb`).
 

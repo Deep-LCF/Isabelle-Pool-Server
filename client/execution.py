@@ -232,6 +232,11 @@ class ExecutionMixin(ClientBase):
         provers: str | None = None,
         load_timeout: float = 120.0,
         lease_id: str | None = None,
+        try0_s: int | None = None,
+        nitpick_s: int | None = None,
+        isar: bool | None = None,
+        split: bool | None = None,
+        parallel: int | None = None,
     ) -> dict[str, Any]:
         """Start the server-side sledgehammer job on every ``sorry`` of ``text``
         (``POST …/fill_sorries``, 202). Returns the initial job state: ``status``,
@@ -246,6 +251,10 @@ class ExecutionMixin(ClientBase):
         }
         if provers:
             body["provers"] = provers
+        for key, val in (("try0_s", try0_s), ("nitpick_s", nitpick_s), ("isar", isar),
+                         ("split", split), ("parallel", parallel)):
+            if val is not None:
+                body[key] = val
         response = await self._request(
             "POST",
             f"{BASE_URL}/{session_id}/fill_sorries",

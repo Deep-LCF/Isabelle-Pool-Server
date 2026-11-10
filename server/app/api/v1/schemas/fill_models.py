@@ -41,6 +41,19 @@ class FillSorriesRequest(BaseModel):  # pylint: disable=too-few-public-methods
         pattern=r"^[a-z0-9_]+( [a-z0-9_]+)*$",
         description="Optional space-separated prover names (Isabelle default when omitted).",
     )
+    # staged fill (2026-11-10): cheap closers first, a verdict per failed sorry,
+    # a structured retry, mechanical splitting, and parallel sessions
+    try0_s: int = Field(default=5, ge=0, le=60,
+                        description="try0 (simp/auto/blast/linarith/...) budget per method before sledgehammer; 0 = off.")
+    nitpick_s: int = Field(default=10, ge=0, le=120,
+                           description="nitpick budget on a sorry try0 could not close; a genuine counterexample marks it `false`; 0 = off.")
+    isar: bool = Field(default=True,
+                       description="Retry once with isar_proofs=true when a prover found a proof the one-liner could not reconstruct.")
+    split: bool = Field(default=True,
+                        description="Split a failed sorry whose conclusion is a conjunction/universal/implication/iff/bounded-universal "
+                                    "into `intro` leaves and attack them in a second pass.")
+    parallel: int = Field(default=1, ge=1, le=8,
+                          description="Sessions working the sorries concurrently (siblings with the same imports; bounded by the sledgehammer slots).")
 
     @field_validator("text")
     @classmethod

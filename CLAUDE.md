@@ -87,7 +87,7 @@ The REPL backend bridges Python ↔ Scala ↔ Isabelle/ML. It uses **Py4J** for 
 - server/repl/src/main/scala/repl/repl_backend.scala - Core backend class managing Isabelle sessions, state, and proof operations
 - server/repl/src/main/scala/repl/server_utils.scala - Low-level Isabelle server/session creation utilities
 - server/repl/src/main/scala/repl/backend_probes.scala - Read-only state queries (subgoals, in-proof, facts, sledgehammer, proof state) run as PIDE OVERLAY queries on the document's last command via Document_Utils.overlay_query — no document edits, no ML→Scala channels (since 2026-09-30); probe_transient (POST /diagnostic) is the one insertion-based probe left
-- server/repl/src/ml/REPL.ML - ML-side Query_Operation registrations (isabelle_pool_server_goals / in_proof / local_facts / global_facts / state / sledgehammer) plus the extraction functions they call (NOTE: path is src/ml/, not src/main/ml/)
+- server/repl/src/ml/REPL.ML - ML-side Query_Operation registrations (isabelle_pool_server_goals / in_proof / local_facts / global_facts / state / sledgehammer / sledgehammer_fill (isar flag) / fill_probe: try0, goal shape and `intro` leaf count, nitpick) plus the extraction functions they call (NOTE: path is src/ml/, not src/main/ml/)
 - server/repl/src/main/scala/repl/thy_*.scala - Theory parsing, status tracking, and checkpoint utilities
 - server/repl/src/python/repl_backend_gateway.py - Python wrapper (ReplBackendGatewayProcess) that spawns the Scala gateway as a subprocess and manages the Py4J bridge
 - server/repl/etc/build.props - Isabelle component build description: `isabelle scala_build` compiles the backend into server/repl/lib/repl.jar (run automatically by `isabelle scala` at gateway start; the Dockerfile and native_setup.sh run it eagerly). server/repl/build.gradle is IDE-only.
@@ -125,7 +125,7 @@ Async HTTP client for end-users. Provides high-level workflows for session creat
   - Session lifecycle: create_session(), acquire_session(), release_session(), close_session()
   - Small-step: execute_command(), enter_theory(), get_proof_state()
   - Automation: sledgehammer() - runs Isabelle's sledgehammer on the current proof goal; returns success/suggestions/raw_output/execution_time plus outcome (`proved` | `none` | `timeout` | `error`) and method — `success` is true only when a proof was found ("No proof found" used to count as success; changed 2026-10-18)
-  - Fill job: fill_sorries() starts the server-side sledgehammer job on every `sorry` of a text (202; per-sorry results, ETA, `patched_text`), fill_status() polls it, fill_cancel() stops it
+  - Fill job: fill_sorries() starts the server-side job on every `sorry` of a text (202; per-sorry results, ETA, `patched_text`), fill_status() polls it, fill_cancel() stops it. Staged since 2026-11-10 (services/fill_stages.py): try0 -> nitpick on failure (outcome `false`) -> sledgehammer -> isar retry -> intro-split with a second pass on the leaves; `parallel` siblings; options `try0_s`/`nitpick_s`/`isar`/`split`/`parallel`; rows carry `stage`, `goal`, `shape`, `split`, `nitpick`
   - Big-step: verify_bigstep_text(), verify_bigstep_file()
   - Checkpointing: checkpoint_session(), rollback_to_checkpoint()
 
@@ -241,7 +241,8 @@ ISABELLE_MAX_CONCURRENT_SLEDGEHAMMER=4  # Sledgehammer slots at memory tier `ok`
                                    # tier drops, interactive /sledgehammer calls are refused (503) at critical.
 
 # fill_sorries job (POST /api/v1/sessions/{id}/fill_sorries; services/fill_sorries.py)
-ISABELLE_FILL_TIMEOUT_S=30         # Default per-sorry sledgehammer budget (s)
+ISABELLE_FILL_TIMEOUT_S=30         # Default per-sorry sledgehammer budget (s); request fields try0_s (5) / nitpick_s (10) /
+                                   # isar (true) / split (true) / parallel (1) select the stages (services/fill_stages.py)
 ISABELLE_FILL_MAX_TOTAL_S=600      # Default wall budget of one job (s), parking included; the rest is skipped
 ISABELLE_FILL_PARK_POLL_S=5        # A parked step re-checks the tier this often (s)
 ISABELLE_FILL_SAMPLE_S=2           # ATP memory attribution sample interval (s) while a step runs

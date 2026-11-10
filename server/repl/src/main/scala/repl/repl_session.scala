@@ -247,10 +247,18 @@ class Repl_Session(session_manager: Session_Manager, initial_thys: List[String] 
     }
 
   /** Sledgehammer hosted on the command with the given report index (fill_sorries). */
-  def sledgehammer_at_command(index: Int, subgoal: Int, timeout_s: Int, max_proofs: Int, provers: String): String =
+  def sledgehammer_at_command(index: Int, subgoal: Int, timeout_s: Int, max_proofs: Int, provers: String, isar: Boolean): String =
     current_thy_info match {
       case Some(_) =>
-        Document_Utils.sledgehammer_at_command_json(session, current_thy_node_name, index, subgoal, timeout_s, max_proofs, provers)
+        Document_Utils.sledgehammer_at_command_json(session, current_thy_node_name, index, subgoal, timeout_s, max_proofs, provers, isar)
+      case None    => Json_Reports.line_query_not_found("no theory entered")
+    }
+
+  /** The fill job's probe (try0 / shape / nitpick) hosted on the command with the given report index. */
+  def fill_probe_at_command(index: Int, subgoal: Int, try0_s: Int, nitpick_s: Int): String =
+    current_thy_info match {
+      case Some(_) =>
+        Document_Utils.fill_probe_at_command_json(session, current_thy_node_name, index, subgoal, try0_s, nitpick_s)
       case None    => Json_Reports.line_query_not_found("no theory entered")
     }
 

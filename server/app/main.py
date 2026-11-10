@@ -16,6 +16,7 @@ from server.app.core import metrics
 from server.app.core.config import API, Logging, Server
 from server.app.core.logging import get_logger, reset_logging_context, set_logging_context, setup_logging
 from server.app.errors import (
+    BackendTimeout,
     GatewayUnavailable,
     HeaderFailed,
     ImportsNotCovered,
@@ -225,6 +226,16 @@ async def handle_pool_exhausted(request: Request, exc: PoolExhausted):
         content={"detail": str(exc) or "Session pool exhausted", "error": "pool_full"},
         headers={"Retry-After": "5"},
     )
+
+
+@app.exception_handler(BackendTimeout)
+async def handle_backend_timeout(request: Request, exc: BackendTimeout):
+    """A backend call outlived its wall budget: 504 with the budget in the
+    message, so the client can act (shorter timeout_s, smaller goal) instead
+    of retrying a generic 500 with a longer one, as the plain-arm P2 run did
+    on 2026-11-09."""
+    logger.error("backend timeout on %s: %s", request.url.path, exc)
+    return JSONResponse(status_code=504, content={"detail": str(exc) or "Backend timeout"})
 
 
 @app.exception_handler(SessionError)

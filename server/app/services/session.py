@@ -12,7 +12,8 @@ import py4j
 
 from server.app.core.config import Logging, Timeouts, RegularExp
 from server.app.core.logging import get_logger, logging_context
-from server.app.errors import SessionError, SessionLeaseError, SessionNotFound
+from server.app.errors import BackendTimeout, SessionError, SessionLeaseError, SessionNotFound
+from server.app.services import sledgehammer_budget
 from server.app.services.threaded_backend import ThreadedBackend
 from server.app.services.success_checker import (
     get_error_message,
@@ -97,9 +98,7 @@ class _Isabelle_Session:
         try:
             return fut.result(timeout=timeout)
         except TimeoutError:
-            raise TimeoutError(
-                f"Backend call timed out after {timeout:.1f}s"
-            ) from None
+            raise BackendTimeout(f"Backend call timed out after {timeout:.1f}s") from None
         except RuntimeError as e:
             # A session looked up via get_session can be closed/evicted before
             # the operation reaches the worker; report that truthfully as a
@@ -273,7 +272,7 @@ class _Isabelle_Session:
                 "running sledgehammer_at line=%s subgoal=%s timeout_s=%s",
                 line, subgoal, timeout_s,
             )
-            effective_http_timeout = http_timeout or (timeout_s + 40.0)
+            effective_http_timeout = http_timeout or sledgehammer_budget.http_wait_at_s(timeout_s)
             result = self._call_backend(
                 lambda: self.backend.raw.sledgehammer_at(line, subgoal, timeout_s),
                 timeout=effective_http_timeout,
@@ -318,7 +317,7 @@ class _Isabelle_Session:
         self._acquire_request()
         try:
             logger.info("running sledgehammer timeout_s=%s", timeout_s)
-            effective_http_timeout = http_timeout or (timeout_s + 30.0)
+            effective_http_timeout = http_timeout or sledgehammer_budget.http_wait_tip_s(timeout_s)
             raw: "py4j.java_collections.JavaList[str]" = self._call_backend(
                 lambda: self.backend.raw.sledgehammer(timeout_s),
                 timeout=effective_http_timeout,

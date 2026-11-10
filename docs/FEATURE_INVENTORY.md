@@ -23,7 +23,7 @@ a deliberate decision about it.
 | Verification with explicit semantics | `verify_chunk` flags; cold build | inferred from counts |
 | Transactional rollback, checkpoints | yes | no |
 | Non-invasive queries | guarded transient command, overlays | edit into file, read, remove |
-| Sledgehammer | tip and positioned, semaphore; `fill_sorries` job | opt-in extension, early stop |
+| Sledgehammer | tip and positioned, semaphore; staged `fill_sorries` job (try0, nitpick verdict, isar retry, intro-split, parallel siblings) | opt-in extension, early stop |
 | Entity search | hover, definition at a position | `find_entities` over a range |
 | Multi-attempt, batch fan-out | yes | scratch theories |
 | Cancellation of a running call | edit removal on budget expiry | protocol cancellation |

@@ -161,7 +161,19 @@ trait Backend_File_Ops { this: ReplBackend =>
    *  server-side like the other sledgehammer entry points. */
   def sledgehammer_at_command(index: Int, subgoal: Int, timeout_s: Int, max_proofs: Int, provers: String): String = {
     Repl_Output.reset()
-    repl_session.sledgehammer_at_command(index, subgoal, timeout_s, max_proofs, provers)
+    repl_session.sledgehammer_at_command(index, subgoal, timeout_s, max_proofs, provers, false)
+  }
+
+  /** As above with `isar_proofs = true`: a structured proof when the one-liner fails (fill job, 2026-11-10). */
+  def sledgehammer_at_command_isar(index: Int, subgoal: Int, timeout_s: Int, max_proofs: Int, provers: String): String = {
+    Repl_Output.reset()
+    repl_session.sledgehammer_at_command(index, subgoal, timeout_s, max_proofs, provers, true)
+  }
+
+  /** The fill job's probe before the hammer: try0, goal shape, nitpick (2026-11-10). */
+  def fill_probe_at_command(index: Int, subgoal: Int, try0_s: Int, nitpick_s: Int): String = {
+    Repl_Output.reset()
+    repl_session.fill_probe_at_command(index, subgoal, try0_s, nitpick_s)
   }
 
   def sledgehammer_at(line: Int, subgoal: Int, timeout_s: Int): String = {

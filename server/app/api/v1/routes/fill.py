@@ -82,6 +82,8 @@ async def fill_sorries(
             timeout_s=request.timeout_s,
             max_total_s=request.max_total_s,
             provers=request.provers or "",
+            try0_s=request.try0_s, nitpick_s=request.nitpick_s, isar=request.isar,
+            split=request.split, parallel=request.parallel, load_timeout=request.load_timeout,
         )
     except ValueError:
         return _in_flight()

@@ -26,6 +26,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from server.app.core import metrics
 from server.app.core.logging import get_logger
 from server.app.services.atp_attribution import AtpAttributionMixin
+from server.app.services import fill_stages
 from server.app.services.memory_hooks import run_with_memory_hooks
 from server.app.services.sledgehammer_slots import SlotWaitExpired
 from server.app.services.success_checker import (
@@ -136,6 +137,8 @@ def replacement_for(subgoals: int, methods: List[str]) -> Optional[str]:
     """
     if subgoals < 1 or len(methods) != subgoals:
         return None
+    if subgoals == 1 and fill_stages.is_isar_proof(methods[0]):
+        return methods[0].strip()  # sledgehammer's structured proof (isar stage), verbatim
     parts = [_split_method(m) for m in methods]
     if any(p is None for p in parts):
         return None
@@ -204,6 +207,15 @@ class TargetResult:
     per_subgoal: List[StepResult] = field(default_factory=list)
     replacement: Optional[str] = None
     reason: Optional[str] = None
+    # staged fill (2026-11-10): which stage settled it and what the probe saw
+    stage: Optional[str] = None       # try0 | sledgehammer | isar | split | nitpick
+    goal: str = ""                    # the subgoal, one line, for the model's verdict
+    shape: str = "atom"
+    split_k: int = 1
+    split_proved: int = 0
+    nitpick: str = ""                 # genuine | quasi_genuine | potential | none | unknown | error
+    nitpick_text: str = ""
+    probe_ms: int = 0
 
     def to_dict(self) -> Dict[str, Any]:
         """The §3.2 row for this target."""
@@ -216,6 +228,12 @@ class TargetResult:
             "outcome": self.outcome,
             "method": self.replacement,
             "reason": self.reason,
+            "stage": self.stage,
+            "goal": self.goal,
+            "shape": self.shape,
+            "split": {"k": self.split_k, "proved": self.split_proved} if self.stage == fill_stages.STAGE_SPLIT else None,
+            "nitpick": self.nitpick or None,
+            "probe_ms": self.probe_ms,
             "per_subgoal": [
                 {"i": s.subgoal, "outcome": s.outcome, "method": s.method, "ms": s.ms}
                 for s in self.per_subgoal
@@ -234,6 +252,13 @@ class FillJob:  # pylint: disable=too-many-instance-attributes
     max_total_s: float
     provers: str
     targets: List[SorryTarget]
+    try0_s: int = 5            # staged fill (2026-11-10): cheap closers before the hammer; 0 = off
+    nitpick_s: int = 10        # counterexample search when try0 fails; 0 = off
+    isar: bool = True          # structured retry when a found proof did not reconstruct
+    split: bool = True         # intro-split a failed splittable goal; second pass on the leaves
+    parallel: int = 1          # sessions working the targets (bounded by the sledgehammer slots)
+    load_timeout: float = 120.0
+    leaf_results: List["TargetResult"] = field(default_factory=list)   # the split pass's targets
     results: List[TargetResult] = field(default_factory=list)
     status: str = "queued"  # queued | running | done | cancelled | error
     current: int = 0  # index into targets of the step in progress
@@ -280,6 +305,9 @@ class FillJob:  # pylint: disable=too-many-instance-attributes
             "typical": round(rem * TYPICAL_STEP_S + queue_wait_s, 1),
         }
 
+    def stage_counts(self) -> Dict[str, int]:
+        return fill_stages.stage_counts(self.results)
+
     def patched_text(self) -> Tuple[str, List[int]]:
         """The submitted text with every fully solved `sorry` replaced."""
         reps = {r.target.index: r.replacement for r in self.results if r.replacement}
@@ -313,6 +341,8 @@ class FillJob:  # pylint: disable=too-many-instance-attributes
             "patched_text": patched,
             "error": self.error,
             "sledgehammer_peak_mb": round(self.peak_rss_bytes / (1024.0 * 1024.0), 1),
+            "stages": self.stage_counts(),
+            "parallel": self.parallel,
         }
         if extra:
             body.update(extra)
@@ -353,6 +383,12 @@ class FillJobMixin(AtpAttributionMixin):
         timeout_s: int,
         max_total_s: float,
         provers: str,
+        try0_s: int = 5,
+        nitpick_s: int = 10,
+        isar: bool = True,
+        split: bool = True,
+        parallel: int = 1,
+        load_timeout: float = 120.0,
     ) -> FillJob:
         """Register and start the job (raises ValueError if one is in flight)."""
         sid = str(session.session_id)
@@ -367,7 +403,10 @@ class FillJobMixin(AtpAttributionMixin):
             max_total_s=float(max_total_s),
             provers=provers,
             targets=extract_targets(commands),
+            try0_s=int(try0_s), nitpick_s=int(nitpick_s), isar=bool(isar), split=bool(split),
+            parallel=max(1, int(parallel)), load_timeout=float(load_timeout),
         )
+        job.n_commands = len(commands or [])
         self._jobs()[sid] = job
         job.task = asyncio.get_running_loop().create_task(self._run_fill(job, session))
         return job
@@ -434,12 +473,15 @@ class FillJobMixin(AtpAttributionMixin):
     async def _run_fill(self, job: FillJob, session: Any) -> None:
         job.status, job.started_at = "running", time.time()
         slots = getattr(self, "slots", None)
+        siblings: List[Tuple[Any, str]] = []
         try:
-            for ti, result in enumerate(job.results):
-                job.current = ti
-                if job.cancelled or time.time() - job.created_at > job.max_total_s:
-                    break
-                await self._run_target(job, result, session, slots)
+            if job.parallel > 1:
+                siblings = await fill_stages.acquire_siblings(
+                    self, job, session, getattr(job, "n_commands", -1))
+            sessions = [session] + [s for s, _ in siblings]
+            await fill_stages.run_pass(self, job, job.results, sessions, slots, allow_split=True)
+            if not job.cancelled and any(r.stage == fill_stages.STAGE_SPLIT for r in job.results):
+                await self._run_split_pass(job, session, slots)
             if job.cancelled:
                 job.status = "cancelled"
             else:
@@ -454,45 +496,16 @@ class FillJobMixin(AtpAttributionMixin):
             logger.exception("fill job failed session=%s", job.session_id)
             job.status, job.error = "error", f"{type(exc).__name__}: {exc}"
         finally:
+            for sib, lease in siblings:
+                with contextlib.suppress(Exception):
+                    self.release_session(sib.session_id, lease)
             job.finished_at = time.time()
             job.parked_reason, job.queue_position = None, -1
             metrics.fill_jobs_total.labels(job.status).inc()
 
-    async def _run_target(  # pylint: disable=too-many-arguments,too-many-positional-arguments
-        self, job: FillJob, result: TargetResult, session: Any, slots: Any
-    ) -> None:
-        subgoal, methods = 1, []
-        while True:
-            if job.cancelled:
-                return
-            step = await self._run_step(job, result.target, subgoal, session, slots)
-            if result.subgoals < 0:
-                result.subgoals = step.subgoals
-            result.per_subgoal.append(step)
-            metrics.fill_steps_total.labels(step.outcome).inc()
-            if step.outcome != SH_PROVED:
-                # §5 Q2: later subgoals cannot change the deliverable → skip them
-                for i in range(subgoal + 1, max(result.subgoals, 0) + 1):
-                    result.per_subgoal.append(StepResult(i, OUTCOME_SKIPPED))
-                result.outcome = step.outcome if subgoal == 1 else OUTCOME_PARTIAL
-                if step.reason:
-                    result.reason = step.reason
-                return
-            methods.append(step.method or "")
-            if subgoal >= max(result.subgoals, 1):
-                break
-            subgoal += 1
-        rep = replacement_for(max(result.subgoals, 1), methods)
-        if rep is not None:
-            _text, bad = build_patch(
-                job.text, [result.target], {result.target.index: rep}
-            )
-            if bad:
-                rep = None  # the sorry span could not be located (review B6)
-        if rep is None:
-            result.outcome, result.reason = OUTCOME_PARTIAL, "unpatchable"
-        else:
-            result.outcome, result.replacement = SH_PROVED, rep
+    async def _run_split_pass(self, job: FillJob, session: Any, slots: Any) -> None:
+        """Second pass (2026-11-10): the split skeletons' leaves (fill_stages)."""
+        await fill_stages.run_split_pass(self, job, session, slots, TargetResult)
 
     async def _run_step(  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-locals
         self,
@@ -501,6 +514,7 @@ class FillJobMixin(AtpAttributionMixin):
         subgoal: int,
         session: Any,
         slots: Any,
+        isar: bool = False,
     ) -> StepResult:
         def on_wait(position: int, reason: Optional[str]) -> None:
             job.queue_position = position
@@ -532,6 +546,10 @@ class FillJobMixin(AtpAttributionMixin):
         try:
 
             def call() -> Any:
+                if isar:
+                    return session.sledgehammer_at_command(
+                        target.host_index, subgoal, job.timeout_s, 1, job.provers, isar=True
+                    )
                 return session.sledgehammer_at_command(
                     target.host_index, subgoal, job.timeout_s, 1, job.provers
                 )
@@ -577,4 +595,5 @@ class FillJobMixin(AtpAttributionMixin):
         step = _classify_step(reply or {})
         step.subgoal, step.ms = subgoal, ms
         step.subgoals = int((reply or {}).get("subgoals", -1))
+        metrics.fill_steps_total.labels(step.outcome).inc()
         return step

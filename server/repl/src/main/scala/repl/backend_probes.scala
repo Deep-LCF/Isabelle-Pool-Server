@@ -47,8 +47,12 @@ object Backend_Probes {
   val GLOBAL_FACTS_BUDGET_MS: Long =
     sys.env.get("ISABELLE_REPL_GLOBAL_FACTS_TIMEOUT_MINUTES").flatMap(_.toLongOption).getOrElse(5L) * 60000L
   /** Grace added to the Isabelle-level sledgehammer timeout (the ATP budget)
-   *  before the overlay is abandoned: prover start-up and result relay. */
-  val SLEDGEHAMMER_GRACE_MS: Long = 30000L
+   *  before the overlay is abandoned. The ML `timeout` bounds each prover, not
+   *  the run: preplay and minimisation follow and on a hard goal take about as
+   *  long again (plain-arm P2, 2026-11-09: 148 s for timeout_s=120, then two
+   *  runs past the old fixed 150 s). Half the budget, 30 s at least; the
+   *  Python waits (Session.sledgehammer{,_at}) add their margin on top. */
+  def sledgehammer_grace_ms(timeout_s: Int): Long = math.max(30000L, timeout_s.toLong * 500L)
   /** Budget for the memory probe (`mem_stats`): it runs in the request path
    *  after ordinary commands, so a distressed prover must cost at most this
    *  much extra, not the 20 s subgoal budget. */
@@ -177,10 +181,16 @@ trait Backend_Probes { this: ReplBackend =>
       else
         try
           state_query("isabelle_pool_server_sledgehammer_query", List(timeout_s.toString, "1"),
-            timeout_s.toLong * 1000L + SLEDGEHAMMER_GRACE_MS, skip_end = false)
+            timeout_s.toLong * 1000L + sledgehammer_grace_ms(timeout_s), skip_end = false)
         catch {
           // not inside a proof: definitional "no suggestions", not a failure
           case ERROR(msg) if msg.contains("Unknown proof context") => List()
+          // budget expiry: an answer the caller can act on, not an exception
+          // that surfaced as HTTP 500 "Internal server error" (2026-11-09)
+          case ERROR(msg) if msg.contains("Timeout waiting for") =>
+            List(s"sledgehammer timed out (budget ${timeout_s}s + " +
+              s"${sledgehammer_grace_ms(timeout_s) / 1000L}s grace): use a smaller timeout_s " +
+              "or sledgehammer a smaller goal")
         }
     suggestions.asJava
   }

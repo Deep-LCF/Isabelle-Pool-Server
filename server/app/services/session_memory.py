@@ -31,6 +31,7 @@ from server.app.core.logging import get_logger
 from server.app.services.internal_models import SessionStatus
 from server.app.services.memory_monitor import proc_matches, read_starttime
 from server.app.services.session import _Isabelle_Session
+from server.app.services import sledgehammer_budget
 
 logger = get_logger(__name__)
 
@@ -245,29 +246,34 @@ class SessionFillMixin:  # pylint: disable=too-few-public-methods
         max_proofs: int = 1,
         provers: str = "",
         http_timeout: Optional[float] = None,
+        isar: bool = False,
     ) -> Dict[str, Any]:
         """``{found, subgoals, results}`` or ``{found: False, subgoals, error}``
         from the backend (JSON parsed); ``subgoals`` is the number of goals the
-        ``sorry`` at that position would close (-1 when the op never ran)."""
+        ``sorry`` at that position would close (-1 when the op never ran).
+        ``isar``: ask for a structured Isar proof (``isar_proofs = true``)."""
         self.update_activity()
         self._acquire_request()
         try:
             logger.info(
-                "running sledgehammer_at_command index=%s subgoal=%s timeout_s=%s max_proofs=%s",
+                "running sledgehammer_at_command index=%s subgoal=%s timeout_s=%s max_proofs=%s isar=%s",
                 index,
                 subgoal,
                 timeout_s,
                 max_proofs,
+                isar,
             )
+            raw = self.backend.raw
+            call = raw.sledgehammer_at_command_isar if isar else raw.sledgehammer_at_command
             result = self._call_backend(
-                lambda: self.backend.raw.sledgehammer_at_command(
+                lambda: call(
                     int(index),
                     int(subgoal),
                     int(timeout_s),
                     int(max_proofs),
                     str(provers or ""),
                 ),
-                timeout=http_timeout or (timeout_s + 40.0),
+                timeout=http_timeout or sledgehammer_budget.http_wait_at_s(timeout_s),
             )
             try:
                 parsed = json.loads(result) if result else None
@@ -279,6 +285,36 @@ class SessionFillMixin:  # pylint: disable=too-few-public-methods
                     "subgoals": -1,
                     "error": "unparseable backend reply",
                 }
+            parsed.setdefault("subgoals", -1)
+            return parsed
+        finally:
+            self._release_request()
+
+    def fill_probe_at_command(
+        self, index: int, subgoal: int = 1, try0_s: int = 5, nitpick_s: int = 0,
+        http_timeout: Optional[float] = None,
+    ) -> Dict[str, Any]:
+        """The fill job's probe before the hammer (2026-11-10): ``{ok, subgoals,
+        goal, shape, split, try0, nitpick}`` -- try0's closing command if one of
+        the cheap methods proves the goal, the goal's top connective and how
+        many leaves `intro conjI impI allI ballI iffI` would make of it, and
+        nitpick's verdict when try0 failed and ``nitpick_s`` > 0."""
+        self.update_activity()
+        self._acquire_request()
+        try:
+            logger.info("running fill_probe_at_command index=%s subgoal=%s try0_s=%s nitpick_s=%s",
+                        index, subgoal, try0_s, nitpick_s)
+            result = self._call_backend(
+                lambda: self.backend.raw.fill_probe_at_command(
+                    int(index), int(subgoal), int(try0_s), int(nitpick_s)),
+                timeout=http_timeout or (try0_s * 4.0 + nitpick_s + 45.0),
+            )
+            try:
+                parsed = json.loads(result) if result else None
+            except (ValueError, TypeError):
+                parsed = None
+            if not isinstance(parsed, dict):
+                return {"ok": False, "subgoals": -1, "error": "unparseable backend reply"}
             parsed.setdefault("subgoals", -1)
             return parsed
         finally:

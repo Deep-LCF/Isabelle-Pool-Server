@@ -20,6 +20,15 @@ class SessionNotFound(SessionError):
     pass
 
 
+class BackendTimeout(SessionError, TimeoutError):
+    """A backend call did not answer within its wall budget (the Py4J future
+    wait in `Session._call_backend`). Also a `TimeoutError`, so callers that
+    already catch the builtin keep working. Mapped to 504 by main.py so the
+    client learns *what* ran out of time instead of the generic 500 that the
+    uncaught builtin produced (plain-arm P2 run, 2026-11-09: three tip
+    sledgehammers at timeout_s=120/180 answered `Internal server error`)."""
+
+
 class ImportsNotCovered(SessionError):
     """enter_theory asked for imports the session's context does not include:
     IPS fixes a session's theory context when it is acquired, and the imports

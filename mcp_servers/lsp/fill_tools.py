@@ -31,6 +31,8 @@ _RESULT_KEYS = (
     "patched_text",
     "error",
     "sledgehammer_peak_mb",
+    "stages",
+    "parallel",
 )
 
 
@@ -47,9 +49,16 @@ def shape(body: Dict[str, Any], continuing: bool) -> Dict[str, Any]:
     unsolved = [
         r["line"]
         for r in out["results"]
-        if r.get("outcome") != "proved" or not r.get("method")
+        if r.get("outcome") not in ("proved", "false") or not r.get("method")
     ]
+    false_rows = [r for r in out["results"] if r.get("outcome") == "false"]
     advice: List[str] = []
+    if false_rows:
+        advice.append(
+            "nitpick found a counterexample at line(s) "
+            f"{[r['line'] for r in false_rows]}: those statements are FALSE as written -- "
+            "fix the statement (missing hypothesis, wrong bound, wrong quantifier), do not try to prove it."
+        )
     if continuing:
         advice.append(
             "The job keeps running server-side (until max_total_s); call "
@@ -148,6 +157,11 @@ async def isabelle_fill_sorries(
     timeout_s: Optional[int] = None,
     max_total_s: Optional[float] = None,
     patience_s: Optional[float] = None,
+    try0_s: Optional[int] = None,
+    nitpick_s: Optional[int] = None,
+    isar: Optional[bool] = None,
+    split: Optional[bool] = None,
+    parallel: Optional[int] = None,
 ) -> str:
     """Let the SERVER run sledgehammer on every `sorry` of the file. Protocol:
     write the proof with `sorry` at every goal you cannot close (also inside
@@ -167,7 +181,15 @@ async def isabelle_fill_sorries(
     stop it. `max_total_s` bounds the job INCLUDING time parked at critical
     memory: a job parked that long ends with its untried sorries `skipped`
     (reason `max_total_s while parked`) — call again later. While a step
-    runs, other tools on this file answer `busy`."""
+    runs, other tools on this file answer `busy`. Stages per sorry (each row
+    says which one settled it, `stage`): cheap closers first (`try0_s` per
+    method, default 5), then sledgehammer, then a structured retry when a
+    proof did not reconstruct (`isar`), then -- for a conjunction / universal /
+    implication / iff goal -- a split into `intro` leaves attacked in a second
+    pass (`split`; rows carry `split: {k, proved}`). A sorry try0 cannot close
+    is checked with nitpick (`nitpick_s`, default 10): outcome `false` with the
+    counterexample means the STATEMENT is wrong, not the proof. Every failed
+    row carries `goal`, the subgoal text. `parallel` sessions share the work."""
     binding, _ = await _bound_synced(file_path)
     text = binding.cached_text
     if text is None:
@@ -176,6 +198,11 @@ async def isabelle_fill_sorries(
     budget = int(timeout_s if timeout_s is not None else Config.FILL_TIMEOUT_S)
     total = float(max_total_s if max_total_s is not None else Config.FILL_MAX_TOTAL_S)
     patience = float(patience_s if patience_s is not None else Config.FILL_PATIENCE_S)
+    stages: Dict[str, Any] = {}
+    for key, val in (("try0_s", try0_s), ("nitpick_s", nitpick_s), ("isar", isar),
+                     ("split", split), ("parallel", parallel)):
+        if val is not None:
+            stages[key] = val
     try:
         body = await pool.call(
             binding,
@@ -187,6 +214,7 @@ async def isabelle_fill_sorries(
                 max_total_s=total,
                 load_timeout=Config.LOAD_TIMEOUT,
                 lease_id=binding.lease_id,
+                **stages,
             ),
         )
     except httpx.HTTPStatusError as exc:

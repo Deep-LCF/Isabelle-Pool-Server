@@ -34,7 +34,8 @@ sig
   val global_facts: Toplevel.state -> int -> string list
   val proof_state: Toplevel.state -> string list
   val sledgehammer_results: int -> int -> Toplevel.state -> string list
-  val sledgehammer_fill: int -> int -> int -> string -> Toplevel.state -> string list
+  val sledgehammer_fill: int -> int -> int -> string -> bool -> Toplevel.state -> string list
+  val fill_probe: int -> int -> int -> Toplevel.state -> string list
   val mem_stats: unit -> string list
 end;
 
@@ -156,7 +157,7 @@ fun sledgehammer_results timeout_s i state =
    beyond N, it answers "subgoals=0"/"subgoals=N" plus an "error=..." line
    instead of raising, so the server reports `error` rather than a timeout. === *)
 
-fun sledgehammer_fill timeout_s i max_proofs provers state =
+fun sledgehammer_fill timeout_s i max_proofs provers isar state =
   (case try Toplevel.proof_of state of
     NONE => ["subgoals=0", "error=Unknown proof context"]
   | SOME proof_state =>
@@ -170,9 +171,13 @@ fun sledgehammer_fill timeout_s i max_proofs provers state =
           let
             val ctxt = Proof.context_of bwd_state;
             val thy = Proof_Context.theory_of ctxt;
+            (* isar: a second, structured attempt for the fill job (2026-11-10) --
+               the default "smart" setting never produced an Isar proof in 921
+               fills, so when the one-liner fails the job asks explicitly. *)
             val extra =
               [("timeout", string_of_int timeout_s), ("max_proofs", string_of_int max_proofs)] @
-              (if provers = "" then [] else [("provers", provers)]);
+              (if provers = "" then [] else [("provers", provers)]) @
+              (if isar then [("isar_proofs", "true"), ("compress", "10")] else []);
             val params = Sledgehammer_Commands.default_params thy extra;
             val collected = Unsynchronized.ref ([] : string list);
             fun on_output s = collected := ! collected @ [clean_string s];
@@ -181,6 +186,92 @@ fun sledgehammer_fill timeout_s i max_proofs provers state =
                 (SOME on_output) i Sledgehammer_Fact.no_fact_override bwd_state;
             val extra_lines = if message = "" then [] else [clean_string message];
           in ("subgoals=" ^ string_of_int n) :: (! collected @ extra_lines) end
+      end);
+
+(* === Probe before the hammer, for the fill job (2026-11-10): one "key=value"
+   line each -- "subgoals=N"; "goal=<subgoal i, one line>"; "shape=conj|all|imp|
+   iff|ball|atom" (the top connective of the conclusion, for mechanical
+   splitting with `intro conjI impI allI ballI iffI`) and "split=K" (the number
+   of leaves that intro step leaves); "try0=<command>|none" (Isabelle's try0
+   schedule -- simp, auto, blast, fastforce, force, linarith, presburger, ... --
+   with try0_s per method; a found command closes every remaining goal, so it
+   is a complete replacement for the sorry); and, only when try0 failed and
+   nitpick_s > 0, "nitpick=genuine|quasi_genuine|potential|none|unknown[:text]"
+   on subgoal i. Outside a proof: "subgoals=0" + "error=...". === *)
+
+fun shape_of t =
+  (case t of
+    Const ("HOL.conj", _) $ _ $ _ => "conj"
+  | Const ("HOL.All", _) $ _ => "all"
+  | Const ("HOL.implies", _) $ _ $ _ => "imp"
+  | Const ("HOL.eq", Type ("fun", [Type ("HOL.bool", []), _])) $ _ $ _ => "iff"
+  | Const ("Set.Ball", _) $ _ $ _ => "ball"
+  | _ => "atom");
+
+fun split_leaves t =
+  (case t of
+    Const ("HOL.conj", _) $ a $ b => split_leaves a + split_leaves b
+  | Const ("HOL.All", _) $ Abs (_, _, body) => split_leaves body
+  | Const ("HOL.implies", _) $ _ $ b => split_leaves b
+  | Const ("HOL.eq", Type ("fun", [Type ("HOL.bool", []), _])) $ a $ b => split_leaves b + split_leaves a
+  | Const ("Set.Ball", _) $ _ $ Abs (_, _, body) => split_leaves body
+  | _ => 1);
+
+val one_line = String.translate (fn #"\n" => " " | c => str c);
+
+(* try0 reports the fastest method that made progress; only a method whose
+   resulting state has no goal left is a complete replacement for the sorry *)
+fun try0_line timeout_s st =
+  let
+    fun closes {state, ...} = Thm.nprems_of (#goal (Proof.goal state)) = 0;
+    val results = (case try (Try0.try0 (SOME (Time.fromSeconds timeout_s)) Try0.empty_facts) st of
+      SOME rs => rs | NONE => []);
+  in
+    (case List.find closes results of
+      SOME {command, ...} => "try0=" ^ one_line (clean_string command)
+    | NONE => "try0=none")
+  end;
+
+fun nitpick_line timeout_s i bwd_state =
+  let
+    val thy = Proof_Context.theory_of (Proof.context_of bwd_state);
+    val params = Nitpick_Commands.default_params thy
+      [("timeout", string_of_int timeout_s), ("verbose", "false"), ("debug", "false"),
+       ("show_all", "false"), ("max_threads", "1")];
+    val cut = fn s => if size s > 400 then String.substring (s, 0, 400) ^ "..." else s;
+  in
+    (case try (Nitpick.pick_nits_in_subgoal bwd_state params Nitpick.Normal i) 0 of
+      SOME (outcome, msgs) =>
+        "nitpick=" ^ outcome ^
+        (case msgs of [] => "" | m :: _ => ":" ^ cut (one_line (clean_string m)))
+    | NONE => "nitpick=error")
+  end;
+
+fun fill_probe try0_s i nitpick_s state =
+  (case try Toplevel.proof_of state of
+    NONE => ["subgoals=0", "error=Unknown proof context"]
+  | SOME proof_state =>
+      let
+        val bwd_state = Proof.enter_backward proof_state;
+        val goal = #goal (Proof.goal bwd_state);
+        val n = Thm.nprems_of goal;
+      in
+        if i < 1 orelse i > n then
+          ["subgoals=" ^ string_of_int n, "error=No subgoal " ^ string_of_int i]
+        else
+          let
+            val ctxt = Proof.context_of bwd_state;
+            val prem = Logic.nth_prem (i, Thm.prop_of goal);
+            val concl0 = Logic.strip_imp_concl prem;
+            val concl = (case try HOLogic.dest_Trueprop concl0 of SOME c => c | NONE => concl0);
+            val goal_s = one_line (clean_string (Pretty.string_of (Syntax.pretty_term ctxt prem)));
+            val t0 = try0_line try0_s bwd_state;
+            val nit =
+              if nitpick_s > 0 andalso t0 = "try0=none" then [nitpick_line nitpick_s i bwd_state] else [];
+          in
+            ["subgoals=" ^ string_of_int n, "goal=" ^ goal_s, "shape=" ^ shape_of concl,
+             "split=" ^ string_of_int (split_leaves concl), t0] @ nit
+          end
       end);
 
 (* === Memory facts of THIS ML process, one "key=value" line each: its OS pid
@@ -268,4 +359,14 @@ val _ =
         val i = the_default 1 (Int.fromString (nth args 1));
         val max_proofs = the_default 1 (Int.fromString (nth args 2));
         val provers = (case drop 3 args of [] => "" | p :: _ => p);
-      in List.app writeln_result (Repl.sledgehammer_fill timeout_s i max_proofs provers st) end);
+        val isar = (case drop 4 args of [] => false | f :: _ => f = "1");
+      in List.app writeln_result (Repl.sledgehammer_fill timeout_s i max_proofs provers isar st) end);
+
+val _ =
+  Query_Operation.register {name = "isabelle_pool_server_fill_probe", pri = 0}
+    (fn {state = st, args, writeln_result, ...} =>
+      let
+        val try0_s = the_default 5 (Int.fromString (nth args 0));
+        val i = the_default 1 (Int.fromString (nth args 1));
+        val nitpick_s = the_default 0 (Int.fromString (nth args 2));
+      in List.app writeln_result (Repl.fill_probe try0_s i nitpick_s st) end);

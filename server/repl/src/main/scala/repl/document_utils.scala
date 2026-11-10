@@ -666,7 +666,7 @@ object Document_Utils {
           session, node_name, command,
           "isabelle_pool_server_sledgehammer_query",
           List(timeout_s.toString, subgoal.toString),
-          (timeout_s + 30).toLong * 1000L)
+          timeout_s.toLong * 1000L + Backend_Probes.sledgehammer_grace_ms(timeout_s))
         if (!done)
           JSON.Format(JSON.Object(
             "found" -> false,
@@ -695,7 +695,8 @@ object Document_Utils {
       subgoal: Int,
       timeout_s: Int,
       max_proofs: Int,
-      provers: String
+      provers: String,
+      isar: Boolean = false
   ): String = {
     val snapshot = node_snapshot(session, node_name)
     val commands = snapshot.node.command_iterator().toList
@@ -710,8 +711,8 @@ object Document_Utils {
         val (done, content, errors) = overlay_query(
           session, node_name, command,
           "isabelle_pool_server_sledgehammer_fill_query",
-          List(timeout_s.toString, subgoal.toString, max_proofs.toString, provers),
-          (timeout_s + 30).toLong * 1000L)
+          List(timeout_s.toString, subgoal.toString, max_proofs.toString, provers, if (isar) "1" else "0"),
+          timeout_s.toLong * 1000L + Backend_Probes.sledgehammer_grace_ms(timeout_s))
         val (subgoals, results) = content match {
           case head :: rest if head.startsWith("subgoals=") =>
             (head.stripPrefix("subgoals=").filter(_.isDigit).toIntOption.getOrElse(0), rest)  // explicit nulls: no trim
@@ -730,6 +731,60 @@ object Document_Utils {
           JSON.Format(JSON.Object("found" -> false, "subgoals" -> subgoals, "error" -> error_line.get))
         else
           JSON.Format(JSON.Object("found" -> true, "subgoals" -> subgoals, "results" -> results))
+      }
+    }
+  }
+
+  /** The fill job's probe before the hammer (2026-11-10), hosted like
+   *  `sledgehammer_at_command_json`: runs the `isabelle_pool_server_fill_probe`
+   *  op (try0 with `try0_s` per method; nitpick with `nitpick_s` when try0 fails
+   *  and nitpick_s > 0) and returns its "key=value" lines as JSON:
+   *  {ok, subgoals, goal, shape, split, try0, nitpick} or {ok:false, subgoals, error}. */
+  def fill_probe_at_command_json(
+      session: Headless.Session,
+      node_name: Document.Node.Name,
+      index: Int,
+      subgoal: Int,
+      try0_s: Int,
+      nitpick_s: Int
+  ): String = {
+    val snapshot = node_snapshot(session, node_name)
+    val commands = snapshot.node.command_iterator().toList
+    if (index < 0 || index >= commands.length)
+      Json_Reports.line_query_not_found(s"no command with index $index")
+    else {
+      val (command, _) = commands(index)
+      if (command.is_ignored)
+        JSON.Format(JSON.Object("ok" -> false, "subgoals" -> 0,
+          "error" -> s"command $index is not a proper command"))
+      else {
+        // try0 runs its methods in parallel (one try0_s each, a few rounds);
+        // nitpick adds nitpick_s; the rest is pretty-printing
+        val budget = (try0_s.toLong * 4L + nitpick_s.toLong + 30L) * 1000L
+        val (done, content, errors) = overlay_query(
+          session, node_name, command, "isabelle_pool_server_fill_probe_query",
+          List(try0_s.toString, subgoal.toString, nitpick_s.toString), budget)
+        def field(key: String): Option[String] =
+          content.collectFirst { case l if l.startsWith(key + "=") => l.stripPrefix(key + "=") }
+        val subgoals = field("subgoals").flatMap(_.filter(_.isDigit).toIntOption).getOrElse(-1)
+        if (!done)
+          JSON.Format(JSON.Object("ok" -> false, "subgoals" -> subgoals,
+            "error" -> s"fill probe timed out (budget ${budget / 1000L}s)"))
+        else if (errors.nonEmpty)
+          JSON.Format(JSON.Object("ok" -> false, "subgoals" -> subgoals,
+            "error" -> (if (errors.head.contains("Unknown proof context"))
+                          s"no open goal at command $index"
+                        else errors.head)))
+        else if (field("error").isDefined)
+          JSON.Format(JSON.Object("ok" -> false, "subgoals" -> subgoals, "error" -> field("error").get))
+        else
+          JSON.Format(JSON.Object(
+            "ok" -> true, "subgoals" -> subgoals,
+            "goal" -> field("goal").getOrElse(""),
+            "shape" -> field("shape").getOrElse("atom"),
+            "split" -> field("split").flatMap(_.toIntOption).getOrElse(1),
+            "try0" -> field("try0").filter(_ != "none").getOrElse(""),
+            "nitpick" -> field("nitpick").getOrElse("")))
       }
     }
   }
