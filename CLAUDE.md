@@ -37,7 +37,7 @@ This is only for the demonstration/test artifacts — not every file touched dur
 2. **FastAPI server** (server/) - RESTful HTTP service with session pooling, resource management, and lease-based concurrency
 3. **Python async client** (client/) - User-facing SDK for small-step (interactive) and big-step (batch) proof verification
 
-**Core purpose**: Isabelle as a managed, concurrent service (the Isabelle counterpart of Kimina Lean Server). Three uses on one core: a training/evaluation environment for LLM provers (small-step with checkpoints/rollback, chunk, big-step), a verification service for single theories or batch workloads (batch loop is client/MCP-side — no server job queue), and a platform for many concurrent agents (MCP servers; agents are isolated, not coordinated; no authentication — trusted network only). Known as IsabelleGym 3.0 until 2026-10-05.
+**Core purpose**: Isabelle as a managed, concurrent service (the Isabelle counterpart of Kimina Lean Server). Three uses on one core: a training/evaluation environment for LLM provers (small-step with checkpoints/rollback, chunk, big-step), a verification service for single theories or batch workloads (batch loop is client/MCP-side — no server job queue), and a platform for many concurrent agents (MCP servers; agents are isolated, not coordinated; no authentication — trusted network only).
 
 ## Quick Start (Docker Recommended)
 
@@ -131,12 +131,11 @@ Async HTTP client for end-users. Provides high-level workflows for session creat
 
 ### Evaluation & Benchmarking: evaluation/
 
-Suite of benchmarking scripts comparing server performance against local IsabelleGym 2.0 baseline and qIsabelle.
+Suite of benchmarking scripts comparing server performance against an in-process baseline (code removed 2026-11-10; its runs remain in results/) and qIsabelle.
 
 **Scripts in evaluation/scripts/:**
 - process.py - Preprocessing: normalize Analysis-style imports to fully qualified HOL-Analysis.<Theory> imports
 - clean_example_dir.py - Remove documentation keywords (text, section, subsection) from theory files
-- eval_smallstep_isabelle-pool-server.py - Local baseline (IsabelleGym 2.0)
 - eval_smallstep_server_client_1_worker_no_reuse.py - Server small-step with fresh session per theory
 - eval_smallstep_server_client_with_reuse.py - Server small-step with pooled session reuse and parallel workers
 - eval_smallstep_qisabelle.py - qIsabelle comparison
@@ -511,8 +510,7 @@ repo_root/
 │   └── runs_analysis.ipynb        # reads results/benchmark_runs.json
 ├── examples/                      # demo.ipynb (API walkthrough incl. sledgehammer), figs, heap_demo_project
 ├── docs/                          # DESIGN_CHOICES.md, ISSUES.md, devnote.md, INSTALL_MANUAL.md (by-hand install steps)
-├── archive/                       # read-only history: previous-works/ (1.0 sources, thesis PDFs),
-│                                  #   isabelle-pool-server2/ (2.0 in-process gym + baseline scripts), install.sh
+├── archive/                       # frozen material: rc0-image/ (how the RC0 image was built)
 ├── tests/                         # unit tests; dependency-direction and 600-line size gates live here
 ├── pyproject.toml                 # package + ALL deps (extras mcp/eval/dev), tool config
 └── README.md                      # User documentation
@@ -520,12 +518,11 @@ repo_root/
 
 ## Additional Resources
 
-- **API Documentation**: archive/previous-works/Isabelle Server System API Documentation.pdf (older OpenAPI export; the live spec is at /openapi.json)
-- **Async Client Documentation**: archive/previous-works/Async Client for Isabelle Server Documentation.pdf
+- **API Documentation**: the live spec at /openapi.json (Swagger UI at /docs)
 - **Isabelle Proof Engine**: See the official Isabelle 2026 documentation for proof state semantics
 - **Theory Corpus**: evaluation/HOL_corpus/Examples/processed/ - small example theories for smoke tests
-- **Previous Works**: archive/previous-works/ contains IsabelleGym 1.0 source and the 2.0 report; archive/isabelle-pool-server2/ the 2.0 in-process gym
-- **Demo**: examples/demo.ipynb walks through the API (including a sledgehammer-via-step example); examples/draft.md and examples/figs/ hold dissertation write-up material
+- **History**: the two earlier REPL prototypes this server grew out of were removed from the repository on 2026-11-10 (unpublished); `archive/rc0-image/` keeps the RC0 image notes
+- **Demo**: examples/demo.ipynb walks through the API (including a sledgehammer-via-step example); examples/figs/ holds report write-up material
 - **Known Issues**: docs/ISSUES.md tracks open bugs and design discussions
 
 ## Response Style

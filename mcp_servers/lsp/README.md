@@ -81,7 +81,7 @@ parser (client wrapper: `async_client.parse_theory_header`).
 
 | Var | Default | Meaning |
 |---|---|---|
-| `..._GYM_URL` | `http://localhost:8000` | Isabelle Pool Server |
+| `..._SERVER_URL` | `http://localhost:8000` | Isabelle Pool Server (`..._GYM_URL`, the old name, is still read) |
 | `..._FIELD` / `..._TASK_GROUP` | `HOL` / `default` | session image bindings and scratch sessions start on / default heap task group |
 | `..._FIELD_FROM_IMPORTS` | false | start on the image the server's header parse suggests for the file's dotted imports (`suggested_field`: the largest distribution image named) instead of `..._FIELD`; an image the server lacks is built on first use, so prebuild the big ones |
 | `..._HTTP_TIMEOUT` | 600 | httpx timeout (s) |

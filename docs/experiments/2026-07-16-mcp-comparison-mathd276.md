@@ -23,7 +23,7 @@ theorem mathd_algebra_276:
 You are an expert in Isabelle/HOL theorem proving with access to MCP tools.
 ```
 
-### IsabelleGym MCP
+### Pool Server MCP
 MCP本身的prompt被设置成了简单介绍所有可用的tool：
 ```
 Prove the following Isabelle/HOL theorem.
@@ -281,7 +281,7 @@ legitimate, leak-checked runs whose outcome reflects the system+model — clean 
 honest unsolved (wall/round cap) — at **temperature 0.3, deepseek-v4-pro, single problem
 `mathd_algebra_276`** (restrictive prompt excluded by decision).
 
-### IsabelleGym — useful results @ 0.3
+### Pool Server — useful results @ 0.3
 
 **general prompt (5/5 quota met; pass@1 = 4/5):**
 
@@ -311,7 +311,7 @@ honest unsolved (wall/round cap) — at **temperature 0.3, deepseek-v4-pro, sing
 
 Excluded from the 0.3 comparison but real solves: general/run8 rep0 (27r @0.7),
 segment/run1 rep0 (7r @0.7), segment/run3 rep3 (38r @0.2). Excluded as contaminated:
-stepwise/run1 rep0 (acquired a dirty session — the one confirmed IsabelleGym proof-leak
+stepwise/run1 rep0 (acquired a dirty session — the one confirmed Pool Server proof-leak
 instance; `reuse_dirty=False` now closes that class).
 
 ### Autocorrode I/Q — prompt setup
@@ -321,7 +321,7 @@ instance; `reuse_dirty=False` now closes that class).
 2. 不断尝试复杂external solver
 3. 浪费一个round试图调用I/R
 
-但是因为像在IsabelleGym里面一样，关于external solver的rule不会被作为Baseline的一部分，所有我这边在General Prompt里面只加入了提示如何使用(\\)(\<name\>)这样的Keyword替代UTF字符，和I/R不可用的提示。
+但是因为像在Pool Server里面一样，关于external solver的rule不会被作为Baseline的一部分，所有我这边在General Prompt里面只加入了提示如何使用(\\)(\<name\>)这样的Keyword替代UTF字符，和I/R不可用的提示。
 
 关于UTF问题，其实不加这个提示I/Q也是可以完成证明的，但是需要2-3个额外的round去意识到这个问题。
 
@@ -400,16 +400,16 @@ no-restriction-prompt solve (28r @0.7).
 
 ### Cross-system reading (cautiously — n = 1 problem)
 
-- Solve rates at 0.3/general: IsabelleGym 4/5 vs I/Q 5-of-~8 legitimate attempts (plus one
+- Solve rates at 0.3/general: Pool Server 4/5 vs I/Q 5-of-~8 legitimate attempts (plus one
   failed-verification claim). Comparable; no clear winner at this sample size.
-- Solved-round medians: IsabelleGym general ~21 (7–28), I/Q ~17 (13–42). Note the
-  IsabelleGym OLD rows ended at the first green target chunk while NEW rows run until an
+- Solved-round medians: Pool Server general ~21 (7–28), I/Q ~17 (13–42). Note the
+  Pool Server OLD rows ended at the first green target chunk while NEW rows run until an
   explicit DONE (+ confirmation rounds), so old-vs-new round counts are not directly
   poolable; I/Q rounds are DONE-terminated throughout.
 - Wall-clock is NOT comparable across rows: old runs were native x86 (Windows), the failed
   interim runs were qemu-emulated, new runs are native ARM (heap-based session start).
   Rounds and tokens are the portable metrics.
-- IsabelleGym's failure mode is budget exhaustion (wall/round caps) with the proof still
+- Pool Server's failure mode is budget exhaustion (wall/round caps) with the proof still
   honest; I/Q's observed failure modes were infrastructure (all fixed) plus the fragile-
   solver acceptance above.
 

@@ -1,3 +1,3 @@
-from .async_client import IsabelleGymAsyncClient, PoolAsyncClient
+from .async_client import PoolAsyncClient
 
-__all__ = ["PoolAsyncClient", "IsabelleGymAsyncClient"]
+__all__ = ["PoolAsyncClient"]

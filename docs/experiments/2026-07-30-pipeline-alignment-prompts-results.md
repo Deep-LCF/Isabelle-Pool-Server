@@ -15,12 +15,12 @@
 | `max_tokens` 4096→32768 | 三系统 | reasoning 模型不再烧光预算产出空轮（"empty response"类错误清零） |
 | I/Q 缓冲区重置 + sorry 校验轮询 | I/Q | 杜绝幻影解（旧缓冲区残留证明被当作新解） |
 | I/Q GBK mojibake 修复（IQServer.scala UTF-8 + bridge PYTHONUTF8） | I/Q | 非英文 locale 下符号不再乱码，write_file 不再因此失败 |
-| DONE gate v2（I/Q: 文档 settle + 0 错 + 0 sorry + `end`；gym: `proof_finished` + 无 sorry；imcp: 评估 settle + 0 错 + 无 sorry） | 三系统 | 假 DONE 每次只花 1 个 nudge 轮（上限 2）而非整次失败；"跑着的行被当作完成"消失 |
-| `pending_qed` 指标（ML `Toplevel.is_proof` 全链路） | IsabelleGym | 修复"目标已证但缺 `qed`"的假完成信号（旧 rep3 类失败不再误判） |
-| sledgehammer 500 修复（ML fork `Exn.capture` 异常回传 + 探针事务化） | IsabelleGym | sh 调用从 5/5 全 500 → 全部快速返回（建议或真实错误），escalation 规则首次可用 |
-| 热身对齐（gym warmup lemma+sh、imcp 预评估、I/Q 文档预热；setup_s/first_tool_s 单列） | 三系统 | 冷热启动成本不进 wall_s；setup_s 只作参考 |
+| DONE gate v2（I/Q: 文档 settle + 0 错 + 0 sorry + `end`；Pool Server: `proof_finished` + 无 sorry；imcp: 评估 settle + 0 错 + 无 sorry） | 三系统 | 假 DONE 每次只花 1 个 nudge 轮（上限 2）而非整次失败；"跑着的行被当作完成"消失 |
+| `pending_qed` 指标（ML `Toplevel.is_proof` 全链路） | Pool Server | 修复"目标已证但缺 `qed`"的假完成信号（旧 rep3 类失败不再误判） |
+| sledgehammer 500 修复（ML fork `Exn.capture` 异常回传 + 探针事务化） | Pool Server | sh 调用从 5/5 全 500 → 全部快速返回（建议或真实错误），escalation 规则首次可用 |
+| 热身对齐（Pool Server warmup lemma+sh、imcp 预评估、I/Q 文档预热；setup_s/first_tool_s 单列） | 三系统 | 冷热启动成本不进 wall_s；setup_s 只作参考 |
 | 单一词 DONE + 超时纪律 + escalation 规则写入 prompt | 三系统 | nudge 轮 4/5 → 0；180s 死循环超时 → ≤30s；sh 使用率上升 |
-| arbiter 统一（gym bigstep，900s 预算） | 三系统 | 判定口径一致；无 ReadTimeout 误判 |
+| arbiter 统一（Pool Server bigstep，900s 预算） | 三系统 | 判定口径一致；无 ReadTimeout 误判 |
 | `mcp_session_startup_retry`（启动重试 1 次） | imcp | 启动抖动不再直接死一个 rep |
 
 #### 1.2 轮数口径（重要）
@@ -40,7 +40,7 @@
 You are an expert in Isabelle/HOL theorem proving with access to MCP tools.
 ```
 
-#### 2.1 IsabelleGym — general
+#### 2.1 Pool Server — general
 
 ```text
 CRITICAL RULES:
@@ -84,7 +84,7 @@ CRITICAL RULES:
 !!! WARNING You have to recheck every rules when you generated a proof !!!
 ```
 
-#### 2.2 IsabelleGym — stepwise
+#### 2.2 Pool Server — stepwise
 
 ```text
 CRITICAL RULES (read carefully — violating any of these will fail the proof)
@@ -186,7 +186,7 @@ LAYER RULES:
 - NEVER use `sorry` or `oops` — they invalidate your proof
 ```
 
-#### 2.3 IsabelleGym — segment
+#### 2.3 Pool Server — segment
 
 ```text
 CRITICAL RULES:
@@ -312,7 +312,7 @@ SEGMENT RULES:
 #### 2.4 AutoCorrode I/Q — general
 
 ```text
-You are an expert interactive theorem prover assistant for Isabelle/HOL. Your job is to construct a complete, correct Isar proof of the target theorem, using the tools provided by the Isabelle MCP server you are connected to.Discharge every `sorry` in C:\Users\winst\GitHub\IsabelleGym\<problem>.thy — replace the `sorry` keyword with a complete proof block.  Write your proof using write_file. You should complete the proof before replying DONE. If you cannot give the reason of why.
+You are an expert interactive theorem prover assistant for Isabelle/HOL. Your job is to construct a complete, correct Isar proof of the target theorem, using the tools provided by the Isabelle MCP server you are connected to.Discharge every `sorry` in C:\Users\winst\GitHub\Pool Server\<problem>.thy — replace the `sorry` keyword with a complete proof block.  Write your proof using write_file. You should complete the proof before replying DONE. If you cannot give the reason of why.
 
 After each edit, check the per-command results and file_summary that write_file returns (call get_diagnostics only when you need more detail).  Fix errors before moving on.
 
@@ -497,8 +497,8 @@ Target theorem:
 
 | System | Variant | pass@1 | 平均轮数(解出) | 平均 wall_s(解出) | 平均 tokens(解出) | 平均 sh 调用 | 用过 sh 的尝试 |
 |---|---|---|---|---|---|---|---|
-| IsabelleGym | general_prompt | 9/10 | 43.8 | 607 | 1.51M | 1.2 | 6/10 |
-| IsabelleGym | segment_prompt | **10/10** | 45.4 | **457** | **1.28M** | 0.9 | 4/10 |
+| Pool Server | general_prompt | 9/10 | 43.8 | 607 | 1.51M | 1.2 | 6/10 |
+| Pool Server | segment_prompt | **10/10** | 45.4 | **457** | **1.28M** | 0.9 | 4/10 |
 | Isabelle-MCP | general_prompt | 8/10 | 53.6 | 596 | 1.55M | 1.1 | 4/10 |
 | Isabelle-MCP | guided_prompt | 8/10 | 50.4 | 499 | 1.61M | **1.7** | 4/10 |
 | I/Q (AutoCorrode) | general_prompt | **10/10** | **22.8** | 568 | 2.35M | 0.9 | 6/10 |
@@ -517,7 +517,7 @@ Target theorem:
 
 1. **I/Q 轮数最少（21–23）且 10/10**，但 tokens 最贵（2.35–2.49M，整文件读写模型的代价）。
    guided 档进一步小幅优化（21.1 轮 / sh 调用 0.9→0.5）。
-2. **IsabelleGym segment 是效率冠军（除轮数外）**：10/10、最低 wall（457s）、最低
+2. **Pool Server segment 是效率冠军（除轮数外）**：10/10、最低 wall（457s）、最低
    tokens（1.28M）。轮数仍是 I/Q 的约 2 倍——整条比较线上剩下的差距主要在模型
    端（模型自己选择的编辑粒度），基础设施问题已全部清除。
 3. **Isabelle-MCP 仍然最贵**（50–54 轮、1.5–1.6M tokens）：整文件重写 + 异步评估
@@ -526,18 +526,18 @@ Target theorem:
 4. sledgehammer 使用模式：guided Isabelle-MCP 的两个未解出尝试（rep1/rep4）恰好是
    sh 用得最多的（4、3 次）——升级规则正确触发，但 sledgehammer 给出答案后模型
    仍无法组装证明，属模型能力边界而非工具问题。
-5. 失败尝试共性：3 个 100 轮上限尝试（gym general rep4、imcp general rep3/rep8）
+5. 失败尝试共性：3 个 100 轮上限尝试（Pool Server general rep4、imcp general rep3/rep8）
    均为真磨失败（如实记录 claimed=False，arbiter 判半成品/错误证明）。无幻影解、
    无基础设施故障。
 6. wall 按 rep 序号无系统性漂移——各系统冷热差异已计入 setup_s（I/Q ~0.2–0.5s、
-   gym ~11.6s、imcp ~9.8s），按约定 setup_s 只作参考不进对比指标。
+   Pool Server ~11.6s、imcp ~9.8s），按约定 setup_s 只作参考不进对比指标。
 
 ---
 
 ### 4. 其它重要注意事项
 
 - **指标口径**：对比指标 = 轮数、tokens、wall_s（+规模后的 pass@1）；`prover_s`/`model_s`、
-  `setup_s`、`first_tool_s` 仅作参考（三系统架构差异太大：I/Q 常驻 jEdit vs gym 每次
+  `setup_s`、`first_tool_s` 仅作参考（三系统架构差异太大：I/Q 常驻 jEdit vs Pool Server 每次
   新会话 vs imcp LSP 启动）。
 - **fairness 双层协议**：general = 共享规则层（接口级事实，无策略辅导）；
   guided/stepwise/segment = 规则层 + 各自 vendor playbook。报告时两层分开解读。

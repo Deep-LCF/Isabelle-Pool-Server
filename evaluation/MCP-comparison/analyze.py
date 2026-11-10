@@ -25,7 +25,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from common.metrics import load_results
 
 SYSTEMS = ["isabelle_pool_server", "isabelle_mcp", "autocorrode", "isabelle_pool_server_lsp"]
-# Pre-rename system keys (project was IsabelleGym until 2026-10-05): runs/ folders and
+# Pre-rename system keys (the project's name before 2026-10-05): runs/ folders and
 # the `system` field of their JSONL rows still carry these; map them on read.
 LEGACY_SYSTEMS = {"isabellegym": "isabelle_pool_server", "isabellegym_lsp": "isabelle_pool_server_lsp"}
 

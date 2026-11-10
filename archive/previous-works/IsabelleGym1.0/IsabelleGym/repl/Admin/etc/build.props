@@ -1,9 +1,0 @@
-title = REPL/Admin
-module = lib/repl_admin.jar
-services = repl.Repl_Admin_Tools
-requirements = \
-  env:ISABELLE_SCALA_JAR
-sources = \
-  src/component_py4j.scala \
-  src/component_spliff.scala \
-  src/repl_admin_tools.scala \

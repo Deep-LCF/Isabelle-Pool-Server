@@ -18,7 +18,9 @@ TOOLS = ToolNames(
 
 class Config:
     # Where the running Isabelle Pool Server lives.
-    GYM_URL: str = env_str(_P, "GYM_URL", "http://localhost:8000")
+    # The Pool Server URL. `..._GYM_URL` is the pre-2026-11 name and still read.
+    SERVER_URL: str = env_str(_P, "SERVER_URL", env_str(_P, "GYM_URL", "http://localhost:8000"))
+    GYM_URL: str = SERVER_URL
     DEFAULT_FIELD: str = env_str(_P, "FIELD", "HOL")
 
     # Concurrency cap for verify_batch fan-out. Kept conservative to respect the server's

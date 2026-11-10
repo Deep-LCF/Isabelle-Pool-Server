@@ -30,9 +30,9 @@ Test/demonstration artifacts for a task (ad-hoc smoke scripts, the write-up of w
 
 ## Project overview
 
-**Isabelle Pool Server** turns Isabelle into a managed, concurrent service — a pool of warm PIDE sessions behind a REST API with lease-based ownership, memory-aware admission control and Prometheus observability (the Isabelle counterpart of Kimina Lean Server). It exposes the prover through the HTTP API, an async Python client (`PoolAsyncClient`), and two MCP (Model Context Protocol) servers, and serves three uses on that core: a **training/evaluation environment** for LLM provers (**small-step** execution with checkpoints/rollback, **chunk** verification via `verify_chunk`, **big-step** whole-`.thy` verification via `isabelle build`), a **verification service** for single or batch workloads (the batch loop is client/MCP-side; there is no server job queue), and a **platform for many concurrent agents** (isolated sessions over a shared pool; no coordination between agents; no authentication — trusted network only). The project was *IsabelleGym Server* (3.0) until 2026-10-05.
+**Isabelle Pool Server** turns Isabelle into a managed, concurrent service — a pool of warm PIDE sessions behind a REST API with lease-based ownership, memory-aware admission control and Prometheus observability (the Isabelle counterpart of Kimina Lean Server). It exposes the prover through the HTTP API, an async Python client (`PoolAsyncClient`), and two MCP (Model Context Protocol) servers, and serves three uses on that core: a **training/evaluation environment** for LLM provers (**small-step** execution with checkpoints/rollback, **chunk** verification via `verify_chunk`, **big-step** whole-`.thy` verification via `isabelle build`), a **verification service** for single or batch workloads (the batch loop is client/MCP-side; there is no server job queue), and a **platform for many concurrent agents** (isolated sessions over a shared pool; no coordination between agents; no authentication — trusted network only).
 
-It is based on IsabelleGym 1.0 by Tom Milan (University of Cambridge) and IsabelleGym 2.0 by Zijing Li (University of Edinburgh); this server iteration is implemented by Xuanwei Ren (University of Edinburgh).
+It grew out of two earlier REPL prototypes by Tom Milan (University of Cambridge) and Zijing Li (University of Edinburgh), unpublished and no longer in this repository; this server is implemented by Xuanwei Ren (University of Edinburgh).
 
 The system has three layers:
 
@@ -188,8 +188,7 @@ repo_root/
 │   └── runs_analysis.ipynb         # rebuilds the dissertation tables from results/benchmark_runs.json
 ├── examples/                       # demo.ipynb (HTTP client + both MCP servers), figs/, heap_demo_project/, demo .thy files
 ├── docs/                           # DESIGN_CHOICES.md, ISSUES.md (bug + work log), devnote.md → experiments/
-├── archive/                        # read-only history: previous-works/ (1.0 sources, API/client PDFs, thesis PDFs),
-│                                   #   isabelle-pool-server2/ (2.0 in-process gym + its baseline scripts), install.sh
+├── archive/                        # frozen material: rc0-image/ (how the RC0 image was built)
 ├── docker-compose.yml              # stays at the root (build context .; dockerfile deploy/Dockerfile)
 └── claude-work/                    # per-task implementation artifacts (gitignored)
 ```
@@ -244,7 +243,7 @@ All variables are read from `server/app/core/config.py` unless noted; `.env.exam
 | `ISABELLE_SERVER_LOG_LEVEL` / `LOG_DIR` / `LOG_FILE` / `MAX_LOG_SIZE_BYTES` / `LOG_BACKUP_COUNT` / `ENABLE_FILE_LOGGING` | INFO / logs / server.log / 10 MB / 5 / true | Logging and rotation. |
 | `ISABELLE_SERVER_REQUEST_ID_HEADER` | X-Request-ID | Header used for request correlation. |
 
-MCP variables: `mcp_servers/stepwise/config.py` (prefix `ISABELLE_MCP_`: `GYM_URL`, `FIELD`, `CHUNK_TIMEOUT`, `HTTP_TIMEOUT`, `MAX_PARALLEL`, `TRANSPORT`, `HOST`/`PORT` 8848) and `mcp_servers/lsp/config.py` (prefix `ISABELLE_MCP_LSP_`: `GYM_URL`, `FIELD`, `TASK_GROUP`, `HTTP_TIMEOUT`, `LOAD_TIMEOUT`, `ATTEMPT_TIMEOUT`, `MAX_PARALLEL`, `SCRATCH_POOL_SIZE`, `SCRATCH_WAIT_TIMEOUT`, `CLOSE_DESTROYS`, `TRANSPORT`, `HOST`/`PORT` 8849). The `evaluation/MCP-comparison/` harness additionally uses `DEEPSEEK_API_KEY` or `KIMI_API_KEY` and, for the AutoCorrode I/Q runner, `IQ_AUTH_TOKEN` / `IQ_MCP_ALLOWED_ROOTS`.
+MCP variables: `mcp_servers/stepwise/config.py` (prefix `ISABELLE_MCP_`: `SERVER_URL` (old name `GYM_URL` still read), `FIELD`, `CHUNK_TIMEOUT`, `HTTP_TIMEOUT`, `MAX_PARALLEL`, `TRANSPORT`, `HOST`/`PORT` 8848) and `mcp_servers/lsp/config.py` (prefix `ISABELLE_MCP_LSP_`: `GYM_URL`, `FIELD`, `TASK_GROUP`, `HTTP_TIMEOUT`, `LOAD_TIMEOUT`, `ATTEMPT_TIMEOUT`, `MAX_PARALLEL`, `SCRATCH_POOL_SIZE`, `SCRATCH_WAIT_TIMEOUT`, `CLOSE_DESTROYS`, `TRANSPORT`, `HOST`/`PORT` 8849). The `evaluation/MCP-comparison/` harness additionally uses `DEEPSEEK_API_KEY` or `KIMI_API_KEY` and, for the AutoCorrode I/Q runner, `IQ_AUTH_TOKEN` / `IQ_MCP_ALLOWED_ROOTS`.
 
 ## Code style guidelines
 
@@ -314,7 +313,6 @@ python -m evaluation.scripts.eval_bigstep_server_client_ver \
   --corpus "$CORPUS" --server http://localhost:8000 --field HOL \
   --timeout 1800 --output "$OUT/bigstep_server.json"
 
-# Local baselines (need isabelle on PATH): eval_smallstep_isabelle-pool-server (archive/isabelle-pool-server2 gym),
 # eval_bigstep_isabelle_build (--isabelle-bin "$(which isabelle)" --parent-session HOL --jobs 4)
 ```
 
@@ -351,7 +349,7 @@ For the cross-MCP comparison harness, see `evaluation/MCP-comparison/README.md` 
 - Architecture rationale: `docs/DESIGN_CHOICES.md`.
 - Known issues, fixes, tracker, dated work log: `docs/ISSUES.md`.
 - Experiment logs: `docs/devnote.md` → `docs/experiments/`.
-- API reference: live at `/openapi.json`; the older exported PDFs and the 1.0/2.0 reports are in `archive/previous-works/`.
+- API reference: live at `/openapi.json` (Swagger UI at `/docs`).
 - MCP usage: `mcp_servers/stepwise/README.md` (chunk-centric) and `mcp_servers/lsp/README.md` (file-sync).
 - Cross-MCP comparison harness: `evaluation/MCP-comparison/README.md`.
 - Per-task implementation artifacts: `claude-work/<task>/NOTES.md` (or `FINDINGS.md` for research tasks; gitignored, local only).

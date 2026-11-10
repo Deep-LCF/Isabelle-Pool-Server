@@ -40,7 +40,7 @@ That's all — the API is serving. Useful next steps:
   HOL-Library, HOL-Computational_Algebra, HOL-Analysis, HOL-Number_Theory,
   HOL-Combinatorics.
 - **Attach an agent:** point an MCP client at this server exactly as in
-  README.md "Connecting the MCP server to an agent" (`ISABELLE_MCP_GYM_URL` for the stepwise server, `ISABELLE_MCP_LSP_GYM_URL` for the lsp server, both `http://localhost:8000`).
+  README.md "Connecting the MCP server to an agent" (`ISABELLE_MCP_SERVER_URL` for the stepwise server, `ISABELLE_MCP_LSP_GYM_URL` for the lsp server, both `http://localhost:8000`).
 - **Persistence (optional):** add `-v isabelle_user_data:/root/.isabelle` to
   keep heap-pool manifests and user settings across container replacement.
   Without a volume the container is fully self-contained and disposable.

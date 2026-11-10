@@ -1,6 +1,6 @@
 # DESIGN_CHOICES.md
 
-Design rationale for Isabelle Pool Server (IsabelleGym 3.0 until its renaming on 2026-10-05), written down after the fact so the choices — and the
+Design rationale for Isabelle Pool Server (renamed on 2026-10-05), written down after the fact so the choices — and the
 roads not taken — survive the people who made them. Format per choice: what we chose, what
 the old/alternative option was, pros and cons of each, why the chosen option won, and what
 possibilities the choice deliberately gave up. Bug numbers refer to ISSUES.md; deeper
@@ -12,7 +12,7 @@ histories live in the internal working notes (not tracked).
 
 ### 1.1 Deployment model: embedded Python library → HTTP service
 
-**Old:** IsabelleGym 2.0 was an in-process Python library. Every training/eval worker
+**Old:** the earlier prototype was an in-process Python library. Every training/eval worker
 embedded its own REPL and spawned its own Isabelle.
 **Chosen:** a FastAPI HTTP service (`server/`) owning all Isabelle state; clients speak REST.
 
@@ -29,7 +29,7 @@ embedded its own REPL and spawned its own Isabelle.
 **Why:** the target workload is many concurrent LLM agents/rollouts against a resource that
 costs gigabytes and tens of seconds per instance. Sharing and gating that resource is the
 whole game; an embedded library cannot do either. **Abandoned:** the local install path
-(`archive/install.sh`, archived 2026-09-27) is unmaintained — the server assumes the container layout (`/app`,
+(an old installer, removed 2026-11-10) is unmaintained — the server assumes the container layout (`/app`,
 `/opt/isabelle`) and that is deliberate: one supported layout instead of N half-working ones.
 
 ### 1.2 Prover bridge: Scala-side PIDE via Py4J → one gateway JVM
@@ -293,7 +293,7 @@ feasible — then deferred, not rejected.
 - *Heap-pool pros:* build = verification (an unbuildable import can never be served);
   startup ~4 s vs tens of seconds re-checking sources (this is also the fix for the slow
   HOL-Computational_Algebra-scale wrapper loads); heap pages shared read-only across
-  sessions via mmap/COW; imports are Milan's reuse boundary made explicit (IsabelleGym 1.0
+  sessions via mmap/COW; imports are Milan's reuse boundary made explicit (the original REPL prototype
   already treated "import a finished theory" as the freeze point for sharing results).
 - *Heap-pool cons:* import edits require an explicit rebuild (deliberate — that IS the
   gate); agents must write qualified names (a header-normalization shim is a deferred

@@ -4,7 +4,7 @@ import isabelle._
 import scala.collection.mutable
 import scala.util.Random
 
-/** Vectorised proof environments (IsabelleGym 1.0 lineage): duplicates of the
+/** Vectorised proof environments (from the original REPL prototype): duplicates of the
  *  current theory so one command can be stepped across N independent copies
  *  (`vectorise` / `vector_step` / `scalarise` on Backend_Chunk_Ops). Consumed
  *  only by the chunk-centric/small-step execution surface. */

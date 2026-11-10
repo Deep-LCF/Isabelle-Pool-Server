@@ -21,7 +21,6 @@ from .sessions import SessionsMixin
 
 __all__ = [
     "PoolAsyncClient",
-    "IsabelleGymAsyncClient",  # deprecated alias (project renamed 2026-10-05)
     "extract_theory_name",
     "THEORY_RE",
     "BASE_URL",
@@ -34,7 +33,3 @@ class PoolAsyncClient(SessionsMixin, ExecutionMixin, InspectionMixin, HeapsMixin
     """Async client for the Isabelle Pool Server. See the mixin modules for the
     method groups; construct with ``PoolAsyncClient(base_url, timeout)``."""
 
-
-# Deprecated alias — the project was IsabelleGym Server until 2026-10-05. Kept for one
-# release so external harnesses importing the old name keep working.
-IsabelleGymAsyncClient = PoolAsyncClient

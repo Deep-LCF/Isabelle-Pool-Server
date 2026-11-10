@@ -12,7 +12,7 @@ published tables.
 | `bigstep_local_build` | 5 | `eval_bigstep_isabelle_build.py` (yes, needs `isabelle`) | HOL-Analysis/processed (93 files) |
 | `bigstep_server_build` | 6 | `eval_bigstep_server_client_ver.py` (yes) | HOL-Analysis/processed; 1 run on Examples |
 | `smallstep_server` | 21 | `eval_smallstep_server_client_with_reuse.py` / `_1_worker_no_reuse.py` (yes) | Examples/processed (16 files); 1 HOL-Analysis run |
-| `smallstep_local_gym` | 5 | `eval_smallstep_isabellegym.py` + `local_gym/` (IsabelleGym 2.0 in-process baseline; archived) | Examples/processed |
+| `smallstep_local_gym` | 5 | the in-process prototype baseline (its code was removed from the repository on 2026-11-10; the runs stay) | Examples/processed |
 | `smallstep_local_qisabelle` | 5 | `eval_smallstep_qisabelle.py` (needs an external qIsabelle checkout; archived) | Examples/processed |
 | `mcp_bench_legacy` | 4 | none — the producing script no longer exists | single miniF2F problems |
 

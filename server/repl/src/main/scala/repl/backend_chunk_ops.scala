@@ -8,7 +8,7 @@ import scala.jdk.CollectionConverters._
  *  the HTTP server's /commands (`step`), /verify_chunk, /checkpoints
  *  (`save_state` / `restore_state`), and /rollback endpoints, plus the
  *  vectorised-environment ops (`vectorise` / `scalarise` / `vector_step`,
- *  IsabelleGym 1.0 lineage).
+ *  from the original REPL prototype).
  *
  *  Unlike Backend_File_Ops, `verify_chunk` is TRANSACTIONAL: a failed or
  *  timed-out chunk is rolled back via `discard_last_edit`, leaving no trace in
@@ -104,7 +104,7 @@ trait Backend_Chunk_Ops { this: ReplBackend =>
   def restore_state(state_id: EnvStateID): Boolean = repl_session.restore_state(state_id)
 
   /** Fork the current theory into `size` duplicate environments for vector
-   *  stepping (IsabelleGym 1.0 lineage). */
+   *  stepping (from the original REPL prototype). */
   def vectorise(size: Int): Unit =
     repl_session.vectorise(size)
 

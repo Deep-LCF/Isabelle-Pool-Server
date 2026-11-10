@@ -62,14 +62,14 @@ ISABELLE_MCP_TRANSPORT=streamable-http ISABELLE_MCP_PORT=8848 python -m mcp_serv
     "isabelle-pool-server": {
       "command": "python",
       "args": ["-m", "mcp_servers.stepwise.app"],
-      "env": { "PYTHONPATH": "/path/to/Isabelle-Pool-Server", "ISABELLE_MCP_GYM_URL": "http://localhost:8000" }
+      "env": { "PYTHONPATH": "/path/to/Isabelle-Pool-Server", "ISABELLE_MCP_SERVER_URL": "http://localhost:8000" }
     }
   }
 }
 ```
 
 ## Config (env)
-`ISABELLE_MCP_GYM_URL` (default `http://localhost:8000`), `ISABELLE_MCP_FIELD` (`HOL`),
+`ISABELLE_MCP_SERVER_URL` (default `http://localhost:8000`), `ISABELLE_MCP_FIELD` (`HOL`),
 `ISABELLE_MCP_MAX_PARALLEL` (`4`), `ISABELLE_MCP_CHUNK_TIMEOUT` (`180`),
 `ISABELLE_MCP_HTTP_TIMEOUT` (`600`), `ISABELLE_MCP_TRANSPORT` (`stdio`|`streamable-http`),
 `ISABELLE_MCP_HOST`, `ISABELLE_MCP_PORT` (`8848`).

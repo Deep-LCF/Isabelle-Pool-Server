@@ -15,8 +15,7 @@ services:
         # compared with the checkout: docker inspect --format
         # '{{index .Config.Labels "org.opencontainers.image.revision"}}' <image>
         GIT_REVISION: ${GIT_REVISION:-unknown}
-    # Explicit image name: without it compose derives one from the checkout
-    # directory (it used to be `isabellegym-isabelle-gym`).
+    # Explicit image name: without it compose derives one from the checkout directory.
     image: isabelle-pool-server:local
     container_name: isabelle-pool-server
     # tini as pid 1: the entrypoint exec's the server, which never reaps the

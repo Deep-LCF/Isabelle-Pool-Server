@@ -31,8 +31,8 @@ mcp_servers:
   isabelle_pool_server:
     command: [python, -m, mcp_servers.stepwise.app]
     env:
-      PYTHONPATH: C:/Users/winst/GitHub/IsabelleGym
-      ISABELLE_MCP_GYM_URL: http://localhost:8000
+      PYTHONPATH: /path/to/Isabelle-Pool-Server
+      ISABELLE_MCP_SERVER_URL: http://localhost:8000
 
   isabelle_mcp:
     # Container mode: spawns isabelle-mcp inside the running Docker container.
