@@ -34,6 +34,7 @@ from server.app.services.success_checker import (
     SH_PROVED,
     classify_sledgehammer,
 )
+from server.app.services.unicode_normaliser import ascii_output
 
 logger = get_logger(__name__)
 
@@ -41,6 +42,7 @@ STEP_OVERHEAD_S = 30.0  # the Scala overlay budget beyond timeout_s: the true wa
 TYPICAL_STEP_S = 6.0  # measured: proved steps answer in 2–6 s (research §2)
 
 OUTCOME_SKIPPED = "skipped"
+OUTCOME_PENDING = "pending"  # a status snapshot only: not reached yet while the job runs
 OUTCOME_PARTIAL = "partial"
 
 
@@ -192,9 +194,7 @@ class StepResult:
     ms: int = 0
     lines: List[str] = field(default_factory=list)
     subgoals: int = -1  # the host goal's subgoal count as the backend reported it
-    reason: Optional[str] = (
-        None  # for a skipped step: why (e.g. max_total_s while parked)
-    )
+    reason: Optional[str] = None  # for a skipped step: why (e.g. max_total_s while parked)
 
 
 @dataclass
@@ -217,15 +217,17 @@ class TargetResult:
     nitpick_text: str = ""
     probe_ms: int = 0
 
-    def to_dict(self) -> Dict[str, Any]:
-        """The §3.2 row for this target."""
+    def to_dict(self, running: bool = False) -> Dict[str, Any]:
+        """The §3.2 row for this target. While the job runs, a target it has not
+        reached is `pending`; `skipped` is final and carries its reason."""
+        untried = running and self.outcome == OUTCOME_SKIPPED and self.reason is None
         return {
             "index": self.target.index,
             "node_line": self.target.node_line,
             "line": self.target.line,
             "host_kind": self.target.host_kind,
             "subgoals": self.subgoals,
-            "outcome": self.outcome,
+            "outcome": OUTCOME_PENDING if untried else self.outcome,
             "method": self.replacement,
             "reason": self.reason,
             "stage": self.stage,
@@ -318,15 +320,11 @@ class FillJob:  # pylint: disable=too-many-instance-attributes
     ) -> Dict[str, Any]:
         """The §3.2 status body."""
         patched, _unpatchable = self.patched_text()
+        over = self.status in ("done", "cancelled", "error")
         body: Dict[str, Any] = {
             "status": self.status,
             "n": len(self.targets),
-            "done": sum(
-                1
-                for r in self.results
-                if r.outcome != OUTCOME_SKIPPED
-                or self.status in ("done", "cancelled", "error")
-            ),
+            "done": sum(1 for r in self.results if r.outcome != OUTCOME_SKIPPED or over),
             "filled": sum(
                 1 for r in self.results if r.outcome == SH_PROVED and r.replacement
             ),
@@ -337,7 +335,7 @@ class FillJob:  # pylint: disable=too-many-instance-attributes
             "parked_since": self.parked_since,
             "elapsed_s": self.elapsed_s(),
             "eta_s": self.eta(queue_wait_s),
-            "results": [r.to_dict() for r in self.results],
+            "results": [r.to_dict(running=not over) for r in self.results],
             "patched_text": patched,
             "error": self.error,
             "sledgehammer_peak_mb": round(self.peak_rss_bytes / (1024.0 * 1024.0), 1),
@@ -354,7 +352,7 @@ def _classify_step(reply: Dict[str, Any]) -> StepResult:
     lines = [str(l) for l in (reply.get("results") or [])]
     error = str(reply.get("error")) if reply.get("error") else None
     outcome, method = classify_sledgehammer(lines, error=error)
-    return StepResult(0, outcome, method, lines=lines or ([error] if error else []))
+    return StepResult(0, outcome, ascii_output(method), lines=lines or ([error] if error else []))
 
 
 class FillJobMixin(AtpAttributionMixin):
@@ -484,6 +482,9 @@ class FillJobMixin(AtpAttributionMixin):
                 await self._run_split_pass(job, session, slots)
             if job.cancelled:
                 job.status = "cancelled"
+                for r in job.results:
+                    if r.outcome == OUTCOME_SKIPPED and r.reason is None:
+                        r.reason = "cancelled before this sorry was tried"
             else:
                 job.status = "done"
                 for r in job.results:

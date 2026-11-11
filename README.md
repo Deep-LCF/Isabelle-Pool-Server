@@ -73,7 +73,7 @@ on demand, which takes minutes.
 The server listens on `0.0.0.0:8000` with **no authentication**: firewall the port or
 tunnel over SSH. `/healthz` is liveness, `/readyz` readiness (200 once the gateway JVM is
 up), `/` the version and pool summary, `/docs` the interactive API, `/metrics` Prometheus,
-`/admin` the console, `GET /api/v1/memory` the memory tier and every session's attributed
+`/admin` the console, `GET /api/v1/symbols` Isabelle's own symbol table (for clients that compare theory text; no copies), `GET /api/v1/memory` the memory tier and every session's attributed
 memory.
 
 ### The HTTP API in four calls

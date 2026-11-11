@@ -74,6 +74,13 @@ class ClientBase:
     async def health(self) -> dict[str, Any]:
         return await self._get_json("/")
 
+    async def symbols(self) -> dict[str, Any]:
+        """Isabelle's symbol table as the server has it (``GET /api/v1/symbols``):
+        ``{symbols: {"\\<le>": "≤", ...}, count, available, ascii_output}``.
+        Use it to compare theory text the way Isabelle reads it instead of
+        carrying a table of your own."""
+        return await self._get_json("/api/v1/symbols")
+
     async def memory_status(self) -> dict[str, Any]:
         """Memory facts (``GET /api/v1/memory``): state, memory numbers, builds
         in flight, evictable / leased rows and every session's expiry + rss."""

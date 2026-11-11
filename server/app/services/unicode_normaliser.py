@@ -13,6 +13,7 @@ import os
 import re
 from functools import lru_cache
 from pathlib import Path
+from typing import Optional
 
 
 def _isabelle_home() -> Path:
@@ -63,6 +64,31 @@ def _load_symbol_table() -> dict[str, str]:
             continue
         mapping[chr(codepoint)] = name
     return mapping
+
+
+def symbol_table() -> dict[str, str]:
+    """The installed Isabelle's table as ``{\\<name>: unicode char}`` (the
+    inverse of the private map), for clients that must compare text the way
+    Isabelle reads it: served by ``GET /api/v1/symbols``."""
+    return {name: ch for ch, name in _load_symbol_table().items()}
+
+
+def ascii_output(text: Optional[str]) -> Optional[str]:
+    """Text the server WRITES INTO a document (a fill method, a try0 command,
+    a goal shown beside it) in the notation the agents are told to write,
+    gated by ``Server.ASCII_OUTPUT`` like every rendered output (the v1
+    serializers do the same for goals and query results). Sledgehammer's
+    rendered methods carry Unicode (`‹x ≤ a n›`); a client that re-types them
+    as `\\<le>` and compares bytes sees two different lines (nearAI_Isabelle
+    rep 1, 2026-11-11). Falls back to the raw text without a symbol table."""
+    from server.app.core.config import Server  # noqa: PLC0415  (config is import-light)
+
+    if text is None or not Server.ASCII_OUTPUT:
+        return text
+    try:
+        return normalise_for_isabelle(str(text))
+    except FileNotFoundError:
+        return str(text)
 
 
 def normalise_for_isabelle(text: str) -> str:

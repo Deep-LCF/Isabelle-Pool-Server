@@ -19,6 +19,7 @@ from .routes import (
     memory,
     positional,
     sessions,
+    symbols,
 )
 
 router = APIRouter()
@@ -33,6 +34,7 @@ for _module in (
     heaps,
     memory,
     fill,
+    symbols,
 ):
     router.include_router(_module.router)
 

@@ -42,6 +42,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from server.app.core.logging import get_logger
 from server.app.services.memory_hooks import run_with_memory_hooks
 from server.app.services.success_checker import SH_PROVED
+from server.app.services.unicode_normaliser import ascii_output
 
 logger = get_logger(__name__)
 
@@ -156,13 +157,13 @@ async def probe_target(manager: Any, job: Any, result: Any, session: Any) -> Dic
     result.probe_ms = int((time.time() - t0) * 1000)
     if override or not isinstance(reply, dict) or not reply.get("ok"):
         return {}
-    result.goal = str(reply.get("goal") or "")[:400]
+    result.goal = str(ascii_output(str(reply.get("goal") or "")))[:400]
     result.shape = str(reply.get("shape") or "atom")
     result.split_k = int(reply.get("split") or 1)
     verdict, text = nitpick_verdict(reply.get("nitpick"))
     if verdict:
         result.nitpick = verdict
-        result.nitpick_text = text
+        result.nitpick_text = str(ascii_output(text))
     if result.subgoals < 0:
         result.subgoals = int(reply.get("subgoals", -1))
     return reply
@@ -171,7 +172,7 @@ async def probe_target(manager: Any, job: Any, result: Any, session: Any) -> Dic
 def apply_try0(result: Any, reply: Dict[str, Any]) -> bool:
     """A try0 command closes every remaining goal of the host: it is the
     replacement. Returns True when the target is settled here."""
-    cmd = str(reply.get("try0") or "").strip()
+    cmd = str(ascii_output(str(reply.get("try0") or ""))).strip()
     if not cmd:
         return False
     result.outcome, result.replacement, result.stage = SH_PROVED, cmd, STAGE_TRY0

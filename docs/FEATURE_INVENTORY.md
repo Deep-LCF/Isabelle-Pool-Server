@@ -34,5 +34,5 @@ a deliberate decision about it.
 | Plugin mechanism | no | Isabelle services |
 | Shipped agent guidance | tool docstrings, one prompt | three skills |
 | Input hardening | ML and IO denylist with policy switch, path roots | none |
-| Observability | metrics, probes, console, `/api/v1/memory` | logs, session statistics |
+| Observability | metrics, probes, console, `/api/v1/memory`, `/api/v1/symbols` | logs, session statistics |
 | Automated tests | 560 test functions, about 850 cases | none |

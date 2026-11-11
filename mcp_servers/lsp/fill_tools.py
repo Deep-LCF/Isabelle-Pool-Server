@@ -60,6 +60,9 @@ def shape(body: Dict[str, Any], continuing: bool) -> Dict[str, Any]:
             "fix the statement (missing hypothesis, wrong bound, wrong quantifier), do not try to prove it."
         )
     if continuing:
+        pending = [r["line"] for r in out["results"] if r.get("outcome") == "pending"]
+        if pending:
+            advice.append(f"Not tried yet (pending, the job is still running): line(s) {pending}.")
         advice.append(
             "The job keeps running server-side (until max_total_s); call "
             "isabelle_fill_status(file_path) to collect it, or "
@@ -173,14 +176,15 @@ async def isabelle_fill_sorries(
     them globally by memory tier (2 at ok, 1 at warning, parked at critical —
     `queue_position` -1 = not queued; `parked` with the reason). Result:
     {filled, n, continuing, results: [{line, host_kind, subgoals, outcome
-    (proved|none|timeout|error|skipped), method, reason, per_subgoal}],
+    (proved|none|timeout|error|false|split|pending|skipped), method, reason, per_subgoal}],
     patched_text, eta_s: {typical, worst}, queue_position, advice}. The tool
     returns after `patience_s` (default 240) with `continuing: true` and the
     partial state — the job KEEPS RUNNING server-side until max_total_s; call
     isabelle_fill_status(file_path) to collect it, isabelle_fill_cancel to
     stop it. `max_total_s` bounds the job INCLUDING time parked at critical
     memory: a job parked that long ends with its untried sorries `skipped`
-    (reason `max_total_s while parked`) — call again later. While a step
+    (reason `max_total_s while parked`) — call again later. `pending` is a
+    sorry the running job has not reached yet (only with `continuing: true`). While a step
     runs, other tools on this file answer `busy`. Stages per sorry (each row
     says which one settled it, `stage`): cheap closers first (`try0_s` per
     method, default 5), then sledgehammer, then a structured retry when a
