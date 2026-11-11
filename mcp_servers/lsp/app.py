@@ -330,10 +330,9 @@ async def isabelle_multi_attempt(
             try:
                 # The bracket ALWAYS returns the scratch slot (also on cancellation)
                 # — see LspPool.scratch_session (Bug 17 / audit MCP-1).
-                async with pool.scratch_session(key) as (sid, lease):
-                    rep_result = await c.load_document(
-                        sid, prefix + candidate, report=True,
-                        timeout=budget, lease_id=lease)
+                rep_result = await pool.with_scratch(
+                    key, lambda sid, lease: c.load_document(
+                        sid, prefix + candidate, report=True, timeout=budget, lease_id=lease))
                 rep = rep_result.get("report") or {}
                 bad = []
                 for cmd in rep.get("commands", []) or []:
@@ -396,14 +395,13 @@ async def isabelle_run_code(
     budget = timeout or Config.ATTEMPT_TIMEOUT
     try:
         # The bracket ALWAYS returns the scratch slot (also on cancellation).
-        async with pool.scratch_session(key) as (sid, lease):
-            if chunk.lstrip().startswith("theory"):
-                result = await c.load_document(
-                    sid, chunk, report=True, timeout=budget, lease_id=lease)
-            else:
-                result = await c.load_document(
-                    sid, chunk, thy_name="Scratch", imports=imports or ["Main"],
-                    report=True, timeout=budget, lease_id=lease)
+        if chunk.lstrip().startswith("theory"):
+            result = await pool.with_scratch(key, lambda sid, lease: c.load_document(
+                sid, chunk, report=True, timeout=budget, lease_id=lease))
+        else:
+            result = await pool.with_scratch(key, lambda sid, lease: c.load_document(
+                sid, chunk, thy_name="Scratch", imports=imports or ["Main"],
+                report=True, timeout=budget, lease_id=lease))
         rep = result.get("report") or {}
         bad = [
             {"line": cmd.get("line"), "kind": cmd.get("kind"), "status": cmd.get("status"),

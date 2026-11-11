@@ -459,6 +459,24 @@ class LspPool(GymClientMixin):
             else:
                 await self.release_scratch(key, session_id, lease_id)
 
+    async def with_scratch(self, key: Tuple, fn, *, retries: int = 1):
+        """Run ``await fn(session_id, lease_id)`` on a scratch session of the
+        context; when the server answers 404/410 (the warm session was evicted,
+        its prover died, or a timed-out chunk took it down: nearAI_Isabelle
+        rep 1 saw eleven such calls, each one answered `session_gone` to an
+        agent that had asked for no session in particular), the bracket drops
+        it and the call is made once more on a fresh one. Any other error, and
+        a second not-found, propagate."""
+        for attempt in range(retries + 1):
+            try:
+                async with self.scratch_session(key) as (session_id, lease_id):
+                    return await fn(session_id, lease_id)
+            except httpx.HTTPStatusError as exc:
+                if attempt < retries and is_not_found(exc):
+                    continue
+                raise
+        raise RuntimeError("unreachable")  # pragma: no cover
+
     async def release_scratch(self, key: Tuple, session_id: str, lease_id: str) -> None:
         queue = self._scratch.get(key)
         self.registry.touch(session_id)

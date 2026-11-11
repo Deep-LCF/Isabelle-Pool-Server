@@ -33,6 +33,7 @@ class FakeClient:
         self.dirty = set()  # sessions that have loaded a document (command history)
         self._counter = 0
         self.fail_next_load_404 = False
+        self.fail_load_404_times = 0  # the next N loads answer 404 (a dead scratch session)
         self.last_memory_state = "ok"
         self.fail_create_503 = False  # create_session raises a memory 503
 
@@ -114,8 +115,9 @@ class FakeClient:
 
     async def load_document(self, session_id, text, thy_name=None, imports=None,
                             timeout=None, report=False, lease_id=None):
-        if self.fail_next_load_404:
+        if self.fail_next_load_404 or self.fail_load_404_times > 0:
             self.fail_next_load_404 = False
+            self.fail_load_404_times = max(0, self.fail_load_404_times - 1)
             raise httpx.HTTPStatusError(
                 "404",
                 request=httpx.Request("PUT", "http://test"),
@@ -683,3 +685,47 @@ def test_scratch_sessions_start_on_the_same_image(tmp_path, monkeypatch):
     scratch = [c["field"] for c in fake.created if (c["label"] or "").startswith("scratch")]
     assert scratch == ["HOL-Computational_Algebra", "HOL-Analysis", "HOL"]
 
+
+
+# ------------------------------------------- a dead scratch session is retried once
+
+
+def _fresh_scratch_pool():
+    from mcp_servers.lsp import server as lsp_server
+    pool = lsp_server.pool
+    pool._bindings.clear()
+    pool._scratch.clear()
+    pool._scratch_counts.clear()
+    return pool
+
+
+def test_run_code_retries_once_on_a_dead_scratch_session():
+    """The server answers 404 for the warm session (evicted or its prover
+    died); the agent asked for no session in particular, so the call is made
+    again on a fresh one and the agent never sees `session_gone`."""
+    lsp_app, fake = _lsp_app_with_fake()
+    _fresh_scratch_pool()
+    fake.fail_load_404_times = 1
+    out = json.loads(asyncio.run(lsp_app.isabelle_run_code(chunk="lemma c: True by simp")))
+    assert out["success"] is True and not out.get("error")
+    assert len(fake.loads) == 1                      # the retry is the one real load
+    assert len([c for c in fake.created if (c["label"] or "").startswith("scratch")]) == 2
+
+
+def test_run_code_reports_session_gone_when_the_retry_dies_too():
+    lsp_app, fake = _lsp_app_with_fake()
+    _fresh_scratch_pool()
+    fake.fail_load_404_times = 2
+    out = json.loads(asyncio.run(lsp_app.isabelle_run_code(chunk="lemma c: True by simp")))
+    assert out["success"] is False and out["error"] == "session_gone"
+
+
+def test_multi_attempt_candidate_retries_once_on_a_dead_scratch_session(tmp_path):
+    lsp_app, fake = _lsp_app_with_fake()
+    _fresh_scratch_pool()
+    f = tmp_path / "Dead.thy"
+    f.write_text("theory Dead imports Main begin\nlemma a: True by simp\nend\n")
+    fake.fail_load_404_times = 1
+    (cand,) = json.loads(asyncio.run(lsp_app.isabelle_multi_attempt(
+        file_path=str(f), line=2, candidates=["lemma b: True by simp"])))
+    assert cand["success"] is True and "error" not in cand
