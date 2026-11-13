@@ -20,4 +20,4 @@ sources = \
   src/main/scala/repl/thy_info.scala \
   src/main/scala/repl/thy_parsing.scala \
   src/main/scala/repl/thy_status.scala
-main = repl.GatewayApp
+main = repl.Gateway_App
