@@ -24,8 +24,21 @@
      isabelle_pool_server_sledgehammer  [timeout_s, subgoal] every line sledgehammer prints;
                                                    error "Unknown proof context"
                                                    outside a proof
+     isabelle_pool_server_mem           []                  "pid=N" (where /proc exists) and
+                                                   the Poly/ML statistics, one
+                                                   "key=value" line each
+     isabelle_pool_server_sledgehammer_fill
+                                        [timeout_s, subgoal, max_proofs, provers, isar]
+                                                   "subgoals=N", then every line
+                                                   sledgehammer prints; an
+                                                   "error=..." line instead of raising
+     isabelle_pool_server_fill_probe    [try0_s, subgoal, nitpick_s]
+                                                   "key=value" lines: subgoals, goal,
+                                                   shape, split, try0, nitpick
    Serves BOTH MCP workflows: the chunk-centric one queries the document tip,
-   the LSP-like one hosts sledgehammer on the command at a given line. *)
+   the LSP-like one hosts sledgehammer on the command at a given line, and the
+   fill_sorries job hosts sledgehammer_fill / fill_probe on the command before
+   each sorry. *)
 
 signature REPL =
 sig

@@ -38,8 +38,13 @@ import isabelle._
  *  removes the edit again (before a trailing `end` via
  *  `Repl_Session.with_probe_before_end`, whose bracket always removes it). */
 object Backend_Probes {
-  /** Wall budgets for the overlay queries. Env-tunable; the Python side reads
-   *  the same variables for its outer timeouts (server/app/core/config.py). */
+  /** Wall budgets for the overlay queries. Env-tunable, read once per JVM from
+   *  the gateway's environment. Of these variables only ISABELLE_REPL_MEM_TIMEOUT
+   *  is also read by the Python side (Repl.MEM_TIMEOUT_S, its wait for
+   *  mem_stats). server/app/core/config.py defines Repl.SUBGOALS_TIMEOUT_S,
+   *  LOCAL_FACTS_TIMEOUT_S and GLOBAL_FACTS_TIMEOUT_MIN too, but nothing reads
+   *  them: the Python waits for these calls are the routes' own timeouts
+   *  (docs/ISSUES.md REPL-11, ENV-1). */
   val SUBGOALS_BUDGET_MS: Long =
     sys.env.get("ISABELLE_REPL_SUBGOALS_TIMEOUT").flatMap(_.toLongOption).getOrElse(20L) * 1000L
   val LOCAL_FACTS_BUDGET_MS: Long =

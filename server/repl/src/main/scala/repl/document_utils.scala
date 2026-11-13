@@ -179,8 +179,8 @@ object Document_Utils {
   /**
    * Status-aware, WALL-BOUNDED per-command report for a freshly inserted chunk.
    *
-   * Unlike `output_node_results` (which collapses everything into a flat buffer and waits
-   * on an UNBOUNDED whole-node barrier), this:
+   * Unlike `output_node_results` (which prints every message into one flat buffer),
+   * this:
    *   - polls until every command is consolidated/failed OR `wall_budget_ms` elapses
    *     (exactly ONE timeout; no per-command timeouts);
    *   - classifies each command (at/after `since_line`, i.e. the inserted chunk) as
@@ -340,8 +340,7 @@ object Document_Utils {
   // Read-only line-based queries (command_at_line / goals_at_line), consumed
   // via GET .../command_at_line and GET .../goals by the LSP-like file-sync
   // mode. Fully read-only: immutable snapshot, no edits, no ML probes — so
-  // they work at ANY document position, including past a trailing theory `end`
-  // (where the channel probes of Backend_Probes would hang).
+  // they work at ANY document position, including past a trailing theory `end`.
   // -----------------------------------------------------------------------
 
   /** Shared core: a fresh stable snapshot of the node plus the command containing

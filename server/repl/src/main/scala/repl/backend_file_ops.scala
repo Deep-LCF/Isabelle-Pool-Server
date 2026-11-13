@@ -7,7 +7,7 @@ import isabelle._
  *  failures — the broken state stays in the node so the caller can inspect and
  *  fix it (the dual of `verify_chunk`'s transactional semantics). Consumed via
  *  PUT /api/v1/sessions/{id}/document with report=true — the file-sync
- *  primitive of the planned LSP-like read-only MCP.
+ *  primitive of the LSP MCP (mcp_servers/lsp).
  *
  *  Also hosts the INCREMENTAL file-sync primitive `sync_document` (Phase B1):
  *  a spliff-diffed PIDE replace edit against the live node, so re-syncs after
@@ -15,15 +15,18 @@ import isabelle._
  *  and re-elaborating the whole file (see its Scaladoc for the fallback
  *  contract and the divergent timeout semantics).
  *
- *  Also hosts the LSP-like READ-ONLY line queries (`command_at_line`,
- *  `goals_at_line`): snapshot-based, no edits and no ML probes, so they work at
- *  any document position — including past a trailing theory `end`, where the
- *  channel probes of Backend_Probes would hang.
+ *  Also hosts the LSP-like READ-ONLY queries: the line queries (`command_at_line`,
+ *  `goals_at_line`) and the position queries (`hover_at`, `definition_at`) are
+ *  snapshot-based — no edits, no ML — so they work at any document position,
+ *  including past a trailing theory `end`; `sledgehammer_at` and the fill job's
+ *  `sledgehammer_at_command{,_isar}` / `fill_probe_at_command` are overlay
+ *  queries on a chosen command (Document_Utils.overlay_query).
  *
  *  Semantics: on BUDGET TIMEOUT the chunk IS discarded (to cancel a runaway
  *  command); on ordinary failure it is kept. The `probe_state` flag controls
  *  whether proof_open/pending_qed are probed — callers pass false when the
- *  text ends with theory `end`, where a trailing probe would never execute. */
+ *  text ends with theory `end`; the backend also checks the node itself (after
+ *  a successful `end` no proof is open, so nothing is probed). */
 trait Backend_File_Ops { this: ReplBackend =>
 
   /**
@@ -34,19 +37,17 @@ trait Backend_File_Ops { this: ReplBackend =>
    * Used by the LSP-like file-sync mode via load_document
    * (PUT /api/v1/sessions/{id}/document with report=true).
    *
-   * Two caveats:
+   * Three caveats:
    *  - On BUDGET TIMEOUT the chunk IS discarded (discard_last_edit) to cancel
    *    the runaway command — leaving a looping `metis` churning is never what a
    *    caller wants. The report's `timed_out`/`running` line names the loop.
    *  - `proof_open`/`pending_qed` are only probed when the chunk succeeded AND
-   *    `probe_state` is true. Callers pass probe_state=false when the text ends
-   *    with theory `end`: a probe appended past `end` never executes, so the
-   *    ML channel would hang until timeout. On failure both are false (the
-   *    caller inspects `commands[]` instead).
+   *    `probe_state` is true (callers pass false when the text ends with
+   *    theory `end`). On failure both are false (the caller inspects
+   *    `commands[]` instead).
    *  - When the kept chunk leaves the document ending with theory `end`, both
-   *    are hardcoded false WITHOUT probing: a successful `end` means no proof
-   *    is open (and probing past `end` would hang). The `probe_state` flag is
-   *    kept as belt-and-braces for reports generated differently.
+   *    are false WITHOUT probing: a successful `end` means no proof is open.
+   *    This check reads the node itself, so it holds whatever `probe_state` says.
    */
   def step_chunk_report(isar_string: String, wall_budget_ms: Long, probe_state: Boolean): String = {
     Repl_Output.reset()
@@ -112,7 +113,7 @@ trait Backend_File_Ops { this: ReplBackend =>
   /** Read-only jEdit-style query: the command containing `line` (1-based) of the
    *  current node, as JSON {found, kind, source, range}. Snapshot-based — no edits,
    *  no ML probes — so it is safe at ANY document position, including past a trailing
-   *  theory `end` (where the channel probes of Backend_Probes hang). Consumed via
+   *  theory `end`. Consumed via
    *  GET /api/v1/sessions/{id}/command_at_line by the LSP-like file-sync mode. */
   def command_at_line(line: Int): String = {
     Repl_Output.reset()
@@ -149,16 +150,12 @@ trait Backend_File_Ops { this: ReplBackend =>
     repl_session.definition_at(line, col)
   }
 
-  /** Sledgehammer on the open goal at a 1-based line (optional subgoal index),
-   *  via the `isabelle_pool_server_sledgehammer` overlay print op (REPL.ML) — no text
-   *  edits, no channel probes. JSON: {found, results: [str]} or
-   *  {found:false, error} (no open goal / timeout). Consumed via
-   *  POST /api/v1/sessions/{id}/sledgehammer_at (semaphore-bounded server-side). */
   /** Sledgehammer on the goal of the command with report index `index` (the
    *  server-side `fill_sorries` job: host = the command before a `sorry`), with
    *  `max_proofs` and an optional space-separated `provers` list. JSON:
-   *  {found, subgoals, results} or {found:false, subgoals, error}. Semaphore-bounded
-   *  server-side like the other sledgehammer entry points. */
+   *  {found, subgoals, results} or {found:false, subgoals, error}. Slot-bounded
+   *  server-side (services/sledgehammer_slots.py) like the other sledgehammer
+   *  entry points. */
   def sledgehammer_at_command(index: Int, subgoal: Int, timeout_s: Int, max_proofs: Int, provers: String): String = {
     Repl_Output.reset()
     repl_session.sledgehammer_at_command(index, subgoal, timeout_s, max_proofs, provers, false)
@@ -176,6 +173,11 @@ trait Backend_File_Ops { this: ReplBackend =>
     repl_session.fill_probe_at_command(index, subgoal, try0_s, nitpick_s)
   }
 
+  /** Sledgehammer on the open goal at a 1-based line (optional subgoal index),
+   *  via the `isabelle_pool_server_sledgehammer` overlay print op (REPL.ML) — no text
+   *  edits. JSON: {found, results: [str]} or {found:false, error} (no open goal /
+   *  timeout). Consumed via POST /api/v1/sessions/{id}/sledgehammer_at
+   *  (slot-bounded server-side, services/sledgehammer_slots.py). */
   def sledgehammer_at(line: Int, subgoal: Int, timeout_s: Int): String = {
     Repl_Output.reset()
     repl_session.sledgehammer_at(line, subgoal, timeout_s)
