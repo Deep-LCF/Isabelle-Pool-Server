@@ -7,7 +7,7 @@ import subprocess
 import threading
 import time
 from pathlib import Path
-from typing import Protocol
+from typing import Protocol, cast
 
 import py4j
 import py4j.java_collections
@@ -107,6 +107,14 @@ class ReplBackend(Protocol):
     # fill_sorries: host = the command with report index `index`; JSON with subgoals.
     def sledgehammer_at_command(  # pylint: disable=too-many-arguments,too-many-positional-arguments
         self, index: int, subgoal: int, timeout_s: int, max_proofs: int, provers: str
+    ) -> str: ...
+    # The same with isar_proofs on: a structured proof when the one-liner fails.
+    def sledgehammer_at_command_isar(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+        self, index: int, subgoal: int, timeout_s: int, max_proofs: int, provers: str
+    ) -> str: ...
+    # fill_sorries' probe before the hammer (try0, goal shape, nitpick); JSON.
+    def fill_probe_at_command(
+        self, index: int, subgoal: int, try0_s: int, nitpick_s: int
     ) -> str: ...
 
 
@@ -223,7 +231,9 @@ class ReplBackendGatewayProcess:
                 factory = getattr(
                     self.gateway.jvm.repl.ReplBackendGateway, method_name
                 )
-                return factory(*args)
+                # Py4J proxies are untyped; the Protocol states the contract
+                # (tests/test_backend_protocol_drift.py keeps it in sync with Scala).
+                return cast(ReplBackend, factory(*args))
             except py4j.protocol.Py4JNetworkError:
                 time.sleep(self.POLL_INTERVAL)
         raise RuntimeError(

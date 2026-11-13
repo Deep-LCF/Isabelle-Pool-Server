@@ -6,7 +6,7 @@ import uuid
 from collections import OrderedDict
 from typing import List, Optional, Tuple, Union
 
-from server.repl.src.python.repl_backend_gateway import ReplBackendGatewayProcess
+from server.repl.src.python.repl_backend_gateway import ReplBackend, ReplBackendGatewayProcess
 from server.repl.src.python.thy_init import ThyInit
 from server.app.core.config import Memory, Server, Timeouts
 from server.app.core.logging import get_logger, logging_context
@@ -239,7 +239,7 @@ class SessionManager(SessionManagerHelpersMixin, MemoryPolicyMixin, FillJobMixin
             try:
                 logger.info("creating raw backend for session_id=%s", session_id)
 
-                def _create_backend():
+                def _create_backend() -> ReplBackend:
                     # ALL Py4J traffic (including building the ArrayList) stays
                     # in this worker thread: a synchronous gateway call on the
                     # event loop froze the whole server when the JVM was busy.

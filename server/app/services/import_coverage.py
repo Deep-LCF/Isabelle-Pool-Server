@@ -13,11 +13,12 @@ the route turns a non-empty answer into a 409.
 
 from __future__ import annotations
 
-from typing import Any, List, Sequence
+from typing import List, Protocol, Sequence
 
 from server.app.core.logging import get_logger
 from server.app.errors import HeaderFailed, SessionError
 from server.app.services.success_checker import classify_error_kind
+from server.app.services.threaded_backend import ThreadedBackend
 
 logger = get_logger(__name__)
 
@@ -26,7 +27,16 @@ HEADER_FAILED_PREFIX = "theory header failed"
 UNJUDGED_PREFIX = "?unjudged"  # the backend could not complete the ancestry
 
 
-def uncovered_imports(session: Any, imports: Sequence[str]) -> List[str]:
+class _BackendHolder(Protocol):  # pylint: disable=too-few-public-methods
+    """What ``uncovered_imports`` needs of a session: its typed backend, so the
+    backend call below is checked against the ``ReplBackend`` Protocol."""
+
+    @property
+    def backend(self) -> ThreadedBackend:
+        """The session's worker-thread backend."""
+
+
+def uncovered_imports(session: _BackendHolder, imports: Sequence[str]) -> List[str]:
     """The requested imports outside the session's context (empty when all are
     covered, or when the backend cannot judge them: unqualified project names,
     an ancestry it cannot complete). The backend walks the session's wrapper

@@ -31,6 +31,7 @@ from server.app.core.logging import get_logger
 from server.app.services.internal_models import SessionStatus
 from server.app.services.memory_monitor import proc_matches, read_starttime
 from server.app.services.session import _Isabelle_Session
+from server.app.services.threaded_backend import ThreadedBackend
 from server.app.services import sledgehammer_budget
 
 logger = get_logger(__name__)
@@ -49,7 +50,7 @@ class SessionMemoryMixin:  # pylint: disable=too-many-instance-attributes
     # provided by _Isabelle_Session
     session_id: Any
     status: Any
-    backend: Any
+    backend: ThreadedBackend
     _call_backend: Callable[..., Any]
 
     ml_pid: Optional[int]
@@ -232,7 +233,7 @@ class SessionFillMixin:  # pylint: disable=too-few-public-methods
     list. Lives here, not in session.py (at the size gate; plan review B1); same
     busy/activity accounting and worker timeout as ``sledgehammer_at``."""
 
-    backend: Any
+    backend: ThreadedBackend
     _call_backend: Callable[..., Any]
     _acquire_request: Callable[[], None]
     _release_request: Callable[[], None]
