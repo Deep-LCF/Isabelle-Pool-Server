@@ -596,7 +596,19 @@ object Document_Utils {
   }
 
   /** Result of an overlay query: (finished-in-budget, content lines, error lines).
-   *  Each `writeln_result` on the ML side is one content line, in call order. */
+   *  Each `writeln_result` on the ML side is one content line, in call order.
+   *
+   *  The query OWNS the node's overlay set and perspective while it runs: it
+   *  replaces the whole set with this one overlay, and its `finally` resets the
+   *  node to (required, empty perspective, no overlays), the state
+   *  Repl_Session.enter_thy leaves (Edit_Utils.set_required_edit). That is
+   *  correct only while
+   *   (i) calls on one session are serialised (one ThreadedBackend worker per
+   *       session on the Python side), so no second overlay is ever live; and
+   *  (ii) nothing else sets a perspective or an overlay on this node.
+   *  Code that runs two overlays on one session, or gives the node another
+   *  perspective, must merge into the set instead of replacing it
+   *  (docs/ISSUES.md REPL-16). */
   def overlay_query(
       session: Headless.Session,
       node_name: Document.Node.Name,
