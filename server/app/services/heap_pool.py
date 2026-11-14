@@ -379,17 +379,17 @@ class HeapPool:
         try:
             proc = await asyncio.create_subprocess_exec(
                 self.isabelle, "build", "-b", "-d", root_dir, name,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
+                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+                start_new_session=True,   # its own process group: killed whole on timeout
             )
-            stdout, stderr = await asyncio.wait_for(
-                proc.communicate(), timeout=Heap.BUILD_TIMEOUT_S
-            )
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=Heap.BUILD_TIMEOUT_S)
             log = (stdout + stderr).decode("utf-8", errors="replace")
             ok = proc.returncode == 0
-        except asyncio.TimeoutError:
+        except asyncio.TimeoutError:          # only wait_for raises it, so `proc` is bound
             ok = False
             log = f"isabelle build timed out after {Heap.BUILD_TIMEOUT_S}s"
+            from server.app.services.build_verify import kill_build_tree  # local import: no cycle
+            await kill_build_tree(proc)       # until 2026-11-14 the build was left running for ever
         except Exception as e:
             ok = False
             log = f"failed to run isabelle build: {e}"

@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import os
 import re
+import signal
 import tempfile
 import time
 from pathlib import Path
@@ -35,6 +37,44 @@ _MLVAL_RE = re.compile(r'^ML_val\b.*\n?', flags=re.MULTILINE)
 
 def _strip_mlval(text: str) -> str:
     return _MLVAL_RE.sub("", text)
+
+
+# ---------------------------------------------------------------------------
+# Killing an `isabelle build`. `isabelle` is a shell wrapper around a JVM
+# (`isabelle.Isabelle_Tool build`) that in turn runs Poly/ML; our stdout and
+# stderr pipes are inherited by all three. Until 2026-11-14 a timed-out build
+# got `proc.kill()` -- the wrapper alone -- followed by an unbounded
+# `await proc.communicate()`. The JVM and Poly/ML lived on holding the pipes,
+# communicate() never saw EOF, and the handler kept the bigstep semaphore
+# (default 1) for ever: every later POST /api/v1/sessions/bigstep queued
+# behind it and its client timed out without a "running isabelle build" line.
+# Observed on wenda-Amd-Wrx80: Build_525e2cf609_23d490e393 alive from
+# 2026-11-13 06:57 for 29 h, builds_in_flight.bigstep=1, four requests queued,
+# the harness recording "verifier unavailable" for every completed() after it.
+# Builds now start in their own session (process group) and are killed as a
+# group, with a bounded reap.
+# ---------------------------------------------------------------------------
+async def kill_build_tree(proc: asyncio.subprocess.Process, reap_timeout: float = 30.0) -> None:
+    """SIGKILL the build's whole process group, then reap it with a bounded wait.
+
+    Requires the process to have been started with ``start_new_session=True``
+    (its pid is then its pgid); falls back to killing the one process when the
+    group cannot be signalled. A reap that still times out is logged and
+    abandoned rather than awaited for ever."""
+    try:
+        os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+    except (ProcessLookupError, PermissionError, OSError):
+        try:
+            proc.kill()
+        except ProcessLookupError:
+            pass
+    try:
+        await asyncio.wait_for(proc.communicate(), timeout=reap_timeout)
+    except asyncio.TimeoutError:
+        logger.warning(
+            "isabelle build pid=%s still holds its pipes %.0fs after SIGKILL; abandoning it",
+            proc.pid, reap_timeout,
+        )
 
 
 def _inline_normalise(text: str) -> str:
@@ -249,13 +289,15 @@ class BuildVerifier:
                 *cmd,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
+                start_new_session=True,   # its own process group: see kill_build_tree
             )
 
             try:
                 stdout_b, stderr_b = await asyncio.wait_for(proc.communicate(), timeout=timeout)
             except asyncio.TimeoutError:
-                proc.kill()
-                await proc.communicate()
+                logger.warning("isabelle build session=%s timed out after %.0fs; killing its process group",
+                               session_name, timeout)
+                await kill_build_tree(proc)
                 return BigStepExecuteResult(
                     success=False,
                     error=f"isabelle build timed out after {timeout:.1f}s",
