@@ -1,5 +1,6 @@
 """Session lifecycle: create, acquire, release, info, close, listings, history, stats."""
 import asyncio
+import hashlib
 import time
 from pathlib import Path
 from typing import Any, Optional
@@ -19,11 +20,10 @@ from ..deps import (
     require_lease_id,
 )
 from ..schemas.API_models import (
-    SessionAcquireRequest,
     SessionAcquireResponse,
-    SessionCreateRequest,
     SessionResponse,
 )
+from ..schemas.session_dirs import SessionAcquireWithDirsRequest, SessionCreateWithDirsRequest
 from ..serializers import session_status
 
 router = APIRouter(tags=["sessions"])
@@ -66,6 +66,15 @@ def _session_inputs(request, heap_pool):
         )
         # order kept: the later import wins a shared short name (D15)
         theories = list(dict.fromkeys((theories or []) + heap_theories))
+    extra_dirs = getattr(request, "session_dirs", None)
+    if extra_dirs:
+        for d in extra_dirs:
+            if not (Path(d) / "ROOT").is_file() and not (Path(d) / "ROOTS").is_file():
+                raise HTTPException(status_code=400, detail=f"session_dirs: no ROOT or ROOTS file in {d}")
+        session_dirs = list(dict.fromkeys((session_dirs or []) + list(extra_dirs)))
+        # sessions started with other directories resolve other sessions: never pooled together
+        digest = hashlib.sha1("\n".join(sorted(extra_dirs)).encode()).hexdigest()[:16]
+        dependency_extra = f"{dependency_extra}|dirs:{digest}" if dependency_extra else f"dirs:{digest}"
     return theories, field, task_group, session_dirs, dependency_extra
 
 
@@ -73,10 +82,10 @@ def _session_inputs(request, heap_pool):
 async def create_session(
     session_manager: SessionManagerDep,
     heap_pool: HeapPoolDep,
-    request: Optional[SessionCreateRequest] = None,
+    request: Optional[SessionCreateWithDirsRequest] = None,
 ):
     if request is None:
-        request = SessionCreateRequest()
+        request = SessionCreateWithDirsRequest()
     theories, field, task_group, session_dirs, dependency_extra = _session_inputs(request, heap_pool)
 
     with logging_context(field=field or "default"):
@@ -125,7 +134,7 @@ async def list_sessions_admin(
 
 @router.post("/api/v1/sessions/acquire", response_model=SessionAcquireResponse)
 async def acquire_session(
-    request: SessionAcquireRequest,
+    request: SessionAcquireWithDirsRequest,
     session_manager: SessionManagerDep,
     heap_pool: HeapPoolDep,
 ):

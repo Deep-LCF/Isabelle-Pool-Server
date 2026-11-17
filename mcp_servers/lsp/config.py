@@ -20,6 +20,8 @@ class Config:
     # does not have fails the acquire (build it first: isabelle_build_heap); prebuild the
     # big ones (`deploy/setup.sh --build-heaps`). Opt-in.
     FIELD_FROM_IMPORTS: bool = env_bool(_P, "FIELD_FROM_IMPORTS", False)
+    # Session-qualified imports of the file's own project (project_sessions.py).
+    PROJECT_SESSIONS: bool = env_bool(_P, "PROJECT_SESSIONS", True)
     DEFAULT_TASK_GROUP: str = env_str(_P, "TASK_GROUP", "default")
 
     # httpx timeout for the underlying client (must exceed load/build budgets).

@@ -43,6 +43,7 @@ from .config import Config
 from .sibling_imports import (  # noqa: F401  (re-exported)
     master_dir_of, resolve_sibling_imports, sibling_imports as _sibling_imports,
 )
+from .project_sessions import project_context
 
 
 def canonical_path(file_path: str) -> str:
@@ -100,6 +101,20 @@ def field_for(suggested: Optional[str]) -> str:
     if Config.FIELD_FROM_IMPORTS and suggested:
         return suggested
     return Config.DEFAULT_FIELD
+
+
+async def file_context(
+    client: PoolAsyncClient, text: str, file_path: str,
+) -> Tuple[List[str], str, Tuple[str, ...]]:
+    """(imports, field, session_dirs) for `file_path`: when the imports name sessions of the
+    file's own project (project_sessions.py), its ROOT directories and the image it builds on;
+    else no directories and field_for(the server's suggestion)."""
+    imports, suggested = await header_fields(client, text, master_dir_of(file_path))
+    if Config.PROJECT_SESSIONS:
+        field, dirs = project_context(imports, file_path)
+        if field is not None:
+            return imports, field, dirs
+    return imports, field_for(suggested), ()
 
 
 def attempt_prefix(text: str, line: int) -> str:
@@ -167,14 +182,15 @@ class LspPool(GymClientMixin):
         # name" after a ~130 s doomed parent-resolution attempt).
         # An unreadable (but existing) file falls back to the empty-deps key.
         imports: Optional[List[str]] = None
-        suggested: Optional[str] = None
+        field: str = field_for(None)
+        session_dirs: Tuple[str, ...] = ()
         try:
             with open(canon, encoding="utf-8") as f:
                 text = f.read()
         except OSError:
             text = None
         if text is not None:
-            imports, suggested = await header_fields(c, text, master_dir_of(canon))
+            imports, field, session_dirs = await file_context(c, text, canon)
             imports = imports or None
         # Acquire (not create): sessions released by other bindings with the
         # same dependency key (task_group + heap / imports, default field)
@@ -190,9 +206,12 @@ class LspPool(GymClientMixin):
         # session shows THIS file in the admin console, not its previous holder.
         # The field: the server's suggestion for the dotted imports when
         # Config.FIELD_FROM_IMPORTS is on, else the LSP's default (field_for).
+        # session_dirs only when the file imports its project's sessions: every other
+        # acquire is exactly what it was before (and works with clients without the key).
+        extra = {"session_dirs": list(session_dirs)} if session_dirs else {}
         resp = await c.acquire_session(
-            theories=imports, field=field_for(suggested), reuse_dirty=False,
-            task_group=group, heap_session=heap_session, label=label or canon,
+            theories=imports, field=field, reuse_dirty=False,
+            task_group=group, heap_session=heap_session, label=label or canon, **extra,
         )
         binding = FileBinding(
             file_path=canon,
@@ -409,13 +428,14 @@ class LspPool(GymClientMixin):
 
     def scratch_key(
         self, task_group: Optional[str], heap_session: Optional[str],
-        imports: List[str], field: Optional[str],
+        imports: List[str], field: Optional[str], session_dirs: Tuple[str, ...] = (),
     ) -> Tuple:
         return (
             task_group or Config.DEFAULT_TASK_GROUP,
             heap_session or "",
             tuple(sorted(imports)),
             field or Config.DEFAULT_FIELD,
+            tuple(session_dirs),
         )
 
     async def acquire_scratch(self, key: Tuple) -> Tuple[str, str]:
@@ -459,14 +479,16 @@ class LspPool(GymClientMixin):
                     f"{Config.SCRATCH_WAIT_TIMEOUT:.0f}s (ISABELLE_MCP_LSP_SCRATCH_POOL_SIZE / "
                     f"ISABELLE_MCP_LSP_SCRATCH_WAIT_TIMEOUT)"
                 ) from None
-        task_group, heap_session, imports, field = key
+        task_group, heap_session, imports, field, session_dirs = key
         try:
             c = await self.client()
+            extra = {"session_dirs": list(session_dirs)} if session_dirs else {}
             resp = await c.create_session(
                 theories=list(imports) or None,
                 field=field,
                 task_group=task_group,
                 heap_session=heap_session or None,
+                **extra,
                 label=f"scratch:{task_group}:{heap_session or 'plain'}",
             )
             lease_renewal.ensure(self)

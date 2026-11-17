@@ -1,0 +1,55 @@
+"""project_sessions: session-qualified imports of a file's own project."""
+import os
+
+from mcp_servers.lsp import project_sessions as ps
+
+
+def _project(tmp_path):
+    root = tmp_path / "repo"
+    (root / ".git").mkdir(parents=True)
+    for d, text in {
+        "urust": 'session "Sat" = "AutoCorrode" +\n  theories Sat_Funs\n',
+        "spec": 'session "Sat_Spec" = "Sat" +\n  theories Sat_Spec\n',
+        "proof": 'session "Sat_Proof" = "Sat_Spec" +\n  theories Sat_Proof\n\n'
+                 'session "Sat_Top" in "top" = "Sat_Proof" +\n  theories Sat_Top\n',
+        "dev": 'session "Ignored" = "HOL" +\n',
+        "target/x": 'session "AlsoIgnored" = "HOL" +\n',
+    }.items():
+        (root / d).mkdir(parents=True)
+        (root / d / "ROOT").write_text(text)
+    (root / "proof" / "top").mkdir()
+    thy = root / "proof" / "top" / "Sat_Top.thy"
+    thy.write_text('theory Sat_Top imports Sat_Proof.Sat_Proof begin end\n')
+    return root, thy
+
+
+def test_root_dirs_and_parents(tmp_path):
+    root, thy = _project(tmp_path)
+    assert ps.find_project_root(str(thy)) == str(root)
+    dirs = ps.project_session_dirs(str(root))
+    assert dirs == sorted(str(root / d) for d in ("proof", "spec", "urust"))
+    parents = ps.session_parents(dirs)
+    assert parents == {"Sat": "AutoCorrode", "Sat_Spec": "Sat", "Sat_Proof": "Sat_Spec",
+                       "Sat_Top": "Sat_Proof"}
+
+
+def test_context_for_project_import(tmp_path):
+    root, thy = _project(tmp_path)
+    field, dirs = ps.project_context(["Sat_Proof.Sat_Proof"], str(thy))
+    assert field == "AutoCorrode"
+    assert dirs == tuple(sorted(str(root / d) for d in ("proof", "spec", "urust")))
+
+
+def test_context_without_project_imports(tmp_path):
+    _, thy = _project(tmp_path)
+    assert ps.project_context(["Main", "HOL-Library.Word"], str(thy)) == (None, ())
+
+
+def test_context_outside_a_repository(tmp_path):
+    thy = tmp_path / "A.thy"
+    thy.write_text("theory A imports Main begin end\n")
+    assert ps.project_context(["Sat_Proof.Sat_Proof"], str(thy)) == (None, ())
+
+
+def test_cycle_gives_no_field():
+    assert ps.outside_ancestor("A", {"A": "B", "B": "A"}) is None

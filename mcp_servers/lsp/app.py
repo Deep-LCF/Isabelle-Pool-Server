@@ -24,7 +24,7 @@ from ..common import dump_json as _j
 from ..common import translate_http_error
 from .config import Config
 from .reminders import add_reminder
-from .pool import attempt_prefix, field_for, header_fields, header_text, master_dir_of
+from .pool import attempt_prefix, field_for, file_context, header_fields, header_text, master_dir_of
 from .verdict import candidate_verdict
 
 from . import scratch_spare
@@ -396,9 +396,9 @@ async def isabelle_multi_attempt(
     prefix = attempt_prefix(text, line)
     c = await pool.client()
     master_dir = master_dir_of(binding.file_path)
-    imports, suggested = await header_fields(c, text, master_dir)
+    imports, field, session_dirs = await file_context(c, text, binding.file_path)
     key = pool.scratch_key(
-        binding.task_group, binding.heap_session, imports, field_for(suggested))
+        binding.task_group, binding.heap_session, imports, field, session_dirs)
     budget = timeout or Config.ATTEMPT_TIMEOUT
     cap = max(1, min(Config.MAX_PARALLEL, len(candidates)))
     sem = asyncio.Semaphore(cap)
