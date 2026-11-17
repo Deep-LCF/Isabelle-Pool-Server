@@ -21,6 +21,10 @@ Load a tool with ToolSearch when a rule calls for it; its description says how t
 
 ## Rules
 
+Before the first `isabelle_open`: when the file imports theories of the project that the task
+does not change and opening it takes more than a minute, build those sessions into a heap
+(`isabelle_build_heap`) and open the file on it (`heap_session`).
+
 1. `isabelle_open` the file. After every edit, check it with `isabelle_diagnostic_messages`.
 2. Read the goal a step must prove with `isabelle_goal` (`goals_before` at the step's own line, not at the `qed` or `done` after it).
 3. Test a step with `isabelle_multi_attempt` before writing it into the file as part of the proof:
@@ -30,7 +34,8 @@ Load a tool with ToolSearch when a rule calls for it; its description says how t
    `done` is missing. Sledgehammer suggestions and structural commands (`proof`, `case`,
    `have … sorry`, `next`, `qed`) need no test. To explore the goals a method leaves, you may also
    write the method followed by `sorry` into the file and read them with `isabelle_goal`; check the
-   file right after, and treat the method like any step under rules 4 and 5.
+   file right after, and treat the method like any step under rules 4 and 5. Give all the candidates for one position in
+   one call: they run in parallel.
 4. A step must finish within 10 seconds (`timeout` 10), unless the project's skill sets another limit.
 5. A result with `still_running` means a command is still running after the 30 s a check waits.
    While its `running_for_s` is below the step's limit (rule 4), check again; once it exceeds the
@@ -38,7 +43,9 @@ Load a tool with ToolSearch when a rule calls for it; its description says how t
    check again, before anything else.
 6. The proof is done when `isabelle_diagnostic_messages` reports no errors and no `still_running`
    and `grep` finds no `sorry` in the file. Then run the task's batch build once, saving its output
-   with `tee`. The batch build reports errors but not the output of commands such as
+   with `tee`. Use a batch build only for this final check and, when a change reaches many theories,
+   to list all their errors at once (then fix them all before building again); never to test a single
+   change. Read the log of the build you started. The batch build reports errors but not the output of commands such as
    `thm_oracles`; read that with `isabelle_query`, naming each theorem as the theory knows it: qualified
    by its locale or named context (`Ctx.thm`), otherwise the result is `Undefined fact`. An output
    of `oracles:` with nothing after it means the theorem uses no oracle.
@@ -50,7 +57,10 @@ those first. Otherwise, in this order:
 
 1. `isabelle_multi_attempt` with `simp`, `auto`, `blast`, `force`, `fastforce`, adding the facts you
    know are relevant.
-2. `isabelle_sledgehammer`. Prefer a `simp`, `auto` or `fastforce` suggestion over `metis`, and
+2. `isabelle_sledgehammer`, started together with step 1 when those methods do not obviously close
+   the goal; for many goals, `isabelle_fill_sorries`. Not for structural errors (a missing case
+   name, a renamed rule, a pattern that no longer matches): read the goal and fix the proof's
+   structure. Prefer a `simp`, `auto` or `fastforce` suggestion over `metis`, and
    `metis` over `smt`.
 3. A `sorry` skeleton: write the proof's structure (cases, induction, intermediate `have`s or
    lemmas) with `sorry` at the leaves, check it, and run `isabelle_fill_sorries` on it. Split the
