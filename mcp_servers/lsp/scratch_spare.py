@@ -105,7 +105,8 @@ def schedule_for_binding(pool: LspPool, binding: FileBinding) -> None:
         try:
             c = await pool.client()
             master_dir = master_dir_of(binding.file_path)
-            imports, field, session_dirs = await file_context(c, text, binding.file_path)
+            imports, field, session_dirs = await file_context(
+                c, text, binding.file_path, binding.heap_session)
             key = pool.scratch_key(binding.task_group, binding.heap_session, imports, field,
                                    session_dirs)
         except Exception as e:  # noqa: BLE001

@@ -11,10 +11,13 @@ name, the binding and scratch sessions are acquired with
     image the project builds on, e.g. AutoCorrode); the project's own theories load from source.
 
 Files whose imports name no session of their project keep the previous behaviour (no dirs, the
-field from the server's suggestion).
+field from the server's suggestion), and so do sessions that Isabelle already knows: those of the
+directories registered in the Isabelle user dir's ROOTS files (e.g. a library whose sources are
+registered for its heap), which the server resolves, and starts on, by itself.
 """
 from __future__ import annotations
 
+import glob
 import os
 import re
 from typing import Dict, List, Optional, Tuple
@@ -69,6 +72,39 @@ def session_parents(dirs: List[str]) -> Dict[str, str]:
     return parents
 
 
+def _roots_sessions(d: str, seen: set) -> List[str]:
+    """Session names of directory `d` (its ROOT) and of the directories its ROOTS file lists."""
+    d = os.path.realpath(d)
+    if d in seen:
+        return []
+    seen.add(d)
+    names = list(session_parents([d]))
+    try:
+        with open(os.path.join(d, "ROOTS"), encoding="utf-8") as f:
+            subdirs = [ln.strip() for ln in f if ln.strip() and not ln.lstrip().startswith("#")]
+    except OSError:
+        subdirs = []
+    for s in subdirs:
+        names += _roots_sessions(os.path.join(d, s), seen)
+    return names
+
+
+def registered_sessions() -> set:
+    """Sessions Isabelle already knows from the user dir: those of the directories listed in
+    ~/.isabelle/*/ROOTS (and the ROOTS files below them)."""
+    names: set = set()
+    seen: set = set()
+    for roots in glob.glob(os.path.expanduser("~/.isabelle/*/ROOTS")):
+        try:
+            with open(roots, encoding="utf-8") as f:
+                dirs = [ln.strip() for ln in f if ln.strip() and not ln.lstrip().startswith("#")]
+        except OSError:
+            continue
+        for d in dirs:
+            names.update(_roots_sessions(os.path.expanduser(d), seen))
+    return names
+
+
 def outside_ancestor(session: str, parents: Dict[str, str]) -> Optional[str]:
     """The first ancestor of `session` (itself excluded) that `parents` does not define, or None
     (a cycle, or a session the project does not define)."""
@@ -90,10 +126,11 @@ def project_context(imports: List[str], file_path: str) -> Tuple[Optional[str], 
     root = find_project_root(file_path)
     if root is None:
         return None, ()
+    known = registered_sessions()
     project_sessions: List[str] = []
     for name in imports:
         m = _QUALIFIED_RE.match(name)
-        if m:
+        if m and m.group(1) not in known:
             project_sessions.append(m.group(1))
     if not project_sessions:
         return None, ()

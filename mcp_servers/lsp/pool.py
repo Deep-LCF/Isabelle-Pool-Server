@@ -104,13 +104,13 @@ def field_for(suggested: Optional[str]) -> str:
 
 
 async def file_context(
-    client: PoolAsyncClient, text: str, file_path: str,
+    client: PoolAsyncClient, text: str, file_path: str, heap_session: Optional[str] = None,
 ) -> Tuple[List[str], str, Tuple[str, ...]]:
     """(imports, field, session_dirs) for `file_path`: when the imports name sessions of the
     file's own project (project_sessions.py), its ROOT directories and the image it builds on;
     else no directories and field_for(the server's suggestion)."""
     imports, suggested = await header_fields(client, text, master_dir_of(file_path))
-    if Config.PROJECT_SESSIONS:
+    if Config.PROJECT_SESSIONS and not heap_session:  # a heap-pool session has its own dirs
         field, dirs = project_context(imports, file_path)
         if field is not None:
             return imports, field, dirs
@@ -190,7 +190,7 @@ class LspPool(GymClientMixin):
         except OSError:
             text = None
         if text is not None:
-            imports, field, session_dirs = await file_context(c, text, canon)
+            imports, field, session_dirs = await file_context(c, text, canon, heap_session)
             imports = imports or None
         # Acquire (not create): sessions released by other bindings with the
         # same dependency key (task_group + heap / imports, default field)

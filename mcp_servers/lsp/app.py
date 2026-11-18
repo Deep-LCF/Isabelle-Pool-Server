@@ -396,7 +396,8 @@ async def isabelle_multi_attempt(
     prefix = attempt_prefix(text, line)
     c = await pool.client()
     master_dir = master_dir_of(binding.file_path)
-    imports, field, session_dirs = await file_context(c, text, binding.file_path)
+    imports, field, session_dirs = await file_context(
+        c, text, binding.file_path, binding.heap_session)
     key = pool.scratch_key(
         binding.task_group, binding.heap_session, imports, field, session_dirs)
     budget = timeout or Config.ATTEMPT_TIMEOUT

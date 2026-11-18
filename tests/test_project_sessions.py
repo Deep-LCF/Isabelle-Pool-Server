@@ -53,3 +53,15 @@ def test_context_outside_a_repository(tmp_path):
 
 def test_cycle_gives_no_field():
     assert ps.outside_ancestor("A", {"A": "B", "B": "A"}) is None
+
+
+def test_registered_sessions_keep_old_behaviour(tmp_path, monkeypatch):
+    root, thy = _project(tmp_path)
+    home = tmp_path / "home"
+    (home / ".isabelle" / "Isabelle2026").mkdir(parents=True)
+    (home / ".isabelle" / "Isabelle2026" / "ROOTS").write_text(str(root / "urust") + "\n")
+    monkeypatch.setenv("HOME", str(home))
+    assert ps.registered_sessions() == {"Sat"}
+    # Sat_Proof is not registered: still handled; an import of the registered Sat alone is not.
+    assert ps.project_context(["Sat_Proof.Sat_Proof"], str(thy))[0] == "AutoCorrode"
+    assert ps.project_context(["Sat.Sat_Funs"], str(thy)) == (None, ())
