@@ -65,3 +65,26 @@ def test_registered_sessions_keep_old_behaviour(tmp_path, monkeypatch):
     # Sat_Proof is not registered: still handled; an import of the registered Sat alone is not.
     assert ps.project_context(["Sat_Proof.Sat_Proof"], str(thy))[0] == "AutoCorrode"
     assert ps.project_context(["Sat.Sat_Funs"], str(thy)) == (None, ())
+
+
+def test_file_context_asks_the_server_for_the_start_image(tmp_path):
+    import asyncio
+
+    from mcp_servers.lsp.header_context import file_context
+
+    class Client:
+        def __init__(self, answer):
+            self.answer = answer
+
+        async def parse_theory_header(self, text):
+            return {"imports": ["Lib.A"], "suggested_field": "Lib"}
+
+        async def select_field(self, imports, field, dirs):
+            if self.answer is None:
+                raise RuntimeError("404")  # an older server
+            return self.answer
+
+    f = str(tmp_path / "T.thy")
+    assert asyncio.run(file_context(Client("Big"), "", f))[1] == "Big"
+    assert asyncio.run(file_context(Client(None), "", f))[1] in ("Lib", "HOL")
+    assert asyncio.run(file_context(Client("Big"), "", f, heap_session="H"))[1] != "Big"

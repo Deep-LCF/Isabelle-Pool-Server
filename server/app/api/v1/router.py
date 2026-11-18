@@ -15,6 +15,7 @@ from .routes import (
     fill,
     health,
     heaps,
+    images,
     inspection,
     memory,
     positional,
@@ -31,6 +32,7 @@ for _module in (
     automation,
     checkpoints,
     heaps,
+    images,
     memory,
     fill,
 ):
