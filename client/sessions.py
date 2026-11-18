@@ -15,6 +15,7 @@ class SessionsMixin(ClientBase):
         task_group: str | None = None,
         heap_session: str | None = None,
         project: str | None = None,
+        session_dirs: list[str] | None = None,
     ) -> dict[str, Any]:
         payload: dict[str, Any] = {}
         if theories is not None:
@@ -29,6 +30,8 @@ class SessionsMixin(ClientBase):
             payload["heap_session"] = heap_session
         if project is not None:
             payload["project"] = project
+        if session_dirs is not None:
+            payload["session_dirs"] = session_dirs
         response = await self._request("POST", BASE_URL, json_body=payload)
         response.raise_for_status()
         return response.json()
@@ -42,6 +45,7 @@ class SessionsMixin(ClientBase):
         heap_session: str | None = None,
         project: str | None = None,
         label: str | None = None,
+        session_dirs: list[str] | None = None,
     ) -> dict[str, Any]:
         payload: dict[str, Any] = {"reuse_dirty": reuse_dirty}
         if theories is not None:
@@ -56,6 +60,8 @@ class SessionsMixin(ClientBase):
             payload["project"] = project
         if label is not None:
             payload["label"] = label
+        if session_dirs is not None:
+            payload["session_dirs"] = session_dirs
         response = await self._request("POST", f"{BASE_URL}/acquire", json_body=payload)
         response.raise_for_status()
         return response.json()

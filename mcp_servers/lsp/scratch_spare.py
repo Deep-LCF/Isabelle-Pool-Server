@@ -21,7 +21,7 @@ import logging
 from typing import Optional, Tuple
 
 from .config import Config
-from .pool import FileBinding, LspPool, field_for, header_fields, master_dir_of
+from .pool import FileBinding, LspPool, field_for, file_context, header_fields, master_dir_of
 
 logger = logging.getLogger(__name__)
 
@@ -105,9 +105,10 @@ def schedule_for_binding(pool: LspPool, binding: FileBinding) -> None:
         try:
             c = await pool.client()
             master_dir = master_dir_of(binding.file_path)
-            imports, suggested = await header_fields(c, text, master_dir)
-            key = pool.scratch_key(binding.task_group, binding.heap_session, imports,
-                                   field_for(suggested))
+            imports, field, session_dirs = await file_context(
+                c, text, binding.file_path, binding.heap_session)
+            key = pool.scratch_key(binding.task_group, binding.heap_session, imports, field,
+                                   session_dirs)
         except Exception as e:  # noqa: BLE001
             logger.info("scratch spare: no key for %s: %s", binding.file_path, e)
             return

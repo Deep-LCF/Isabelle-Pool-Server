@@ -57,3 +57,15 @@ class HeapsMixin(ClientBase):
         response = await self._request("DELETE", f"{HEAP_GROUPS_URL}/{task_group}")
         response.raise_for_status()
         return response.json()
+
+    async def select_field(
+        self, imports: list[str], field: str | None, session_dirs: list[str] | None = None
+    ) -> str | None:
+        """The image the server picks to start on for `imports` so that theories already built
+        into an up-to-date image are not checked again (server/app/services/image_select.py)."""
+        response = await self._request(
+            "POST", "/api/v1/select_field",
+            json_body={"imports": imports, "field": field, "session_dirs": session_dirs or []},
+        )
+        response.raise_for_status()
+        return response.json().get("field")
