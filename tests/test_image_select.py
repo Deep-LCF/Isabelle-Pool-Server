@@ -34,7 +34,7 @@ def heaps(tmp_path, monkeypatch):
                                     "ML_SYSTEM": "polyml-5.9.2"})
     monkeypatch.setattr(m, "_theories", {})
     stale = set()
-    monkeypatch.setattr(m, "current", lambda name, imgs, dirs: name not in stale)
+    monkeypatch.setattr(m, "current", lambda name, dirs: name not in stale)
     return stale
 
 

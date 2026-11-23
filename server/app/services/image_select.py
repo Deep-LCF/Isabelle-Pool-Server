@@ -7,27 +7,25 @@ database `log/<session>.db` of each image records both: the exports of its theor
 heaps). The proposed field is kept when it covers the imports and is up to date; otherwise the
 smallest up-to-date image that covers them is chosen; when none does, the proposed field stays.
 Up to date means `isabelle build -n -b` (no build) succeeds for it, with the session directories
-the session will use; that check takes seconds, so its result is cached per image file.
+the session will use. That check takes seconds and is run on every call: it is not cached, because a
+cache keyed on the image file misses edits to the image's source theories (the image file does not
+change when they do), and then a stale image is chosen and the session start fails.
 """
 from __future__ import annotations
 
-import os
 import re
 import sqlite3
 import subprocess
 import threading
-import time
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
 
 from server.app.services.heap_pool import default_isabelle as _isabelle
 
 _QUALIFIED = re.compile(r'^"?([A-Za-z0-9_+\-]+\.[A-Za-z0-9_\'.]+)"?$')
-_CURRENT_TTL_S = float(os.getenv("ISABELLE_SELECT_FIELD_TTL_S", "600"))
 _lock = threading.Lock()
 _env: Optional[Dict[str, str]] = None
 _theories: Dict[Tuple[str, float], Set[str]] = {}
-_current: Dict[Tuple[str, float, Tuple[str, ...]], Tuple[float, bool]] = {}
 
 
 def _getenv() -> Dict[str, str]:
@@ -82,19 +80,13 @@ def theories(name: str, imgs: Dict[str, Path]) -> Set[str]:
     return _theories[key]
 
 
-def current(name: str, imgs: Dict[str, Path], dirs: Tuple[str, ...]) -> bool:
-    """`isabelle build -n -b` succeeds for `name` (cached per image file for _CURRENT_TTL_S)."""
-    key = (name, imgs[name].stat().st_mtime, dirs)
-    hit = _current.get(key)
-    if hit and time.time() - hit[0] < _CURRENT_TTL_S:
-        return hit[1]
+def current(name: str, dirs: Tuple[str, ...]) -> bool:
+    """`isabelle build -n -b` succeeds for `name` (not cached; see the module docstring)."""
     cmd = [_isabelle(), "build", "-n", "-b"] + [a for d in dirs for a in ("-d", d)] + [name]
     try:
-        ok = subprocess.run(cmd, capture_output=True, timeout=300).returncode == 0
+        return subprocess.run(cmd, capture_output=True, timeout=300).returncode == 0
     except subprocess.TimeoutExpired:
-        ok = False
-    _current[key] = (time.time(), ok)
-    return ok
+        return False
 
 
 def select_field(imports: List[str], field: Optional[str], dirs: Tuple[str, ...] = ()) -> Optional[str]:
@@ -105,9 +97,9 @@ def select_field(imports: List[str], field: Optional[str], dirs: Tuple[str, ...]
     with _lock:
         imgs = images()
         covering = [s for s in imgs if wanted <= theories(s, imgs)]
-        if field in covering and current(field, imgs, dirs):
+        if field in covering and current(field, dirs):
             return field
         for s in sorted(covering, key=lambda s: len(theories(s, imgs))):
-            if s != field and current(s, imgs, dirs):
+            if s != field and current(s, dirs):
                 return s
     return field
